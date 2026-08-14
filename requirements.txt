@@ -1,4 +1,7 @@
-mcp>=2.0.0
+mcp>=1.29.0,<2.0.0
 httpx>=0.28.1
 python-dotenv>=1.2.2
 streamlit>=1.40
+langgraph>=1.2.11
+langchain-mcp-adapters>=0.3.2
+langchain-openai>=1.5.1

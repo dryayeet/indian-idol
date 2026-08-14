@@ -75,7 +75,7 @@ tool = next(t for t in tools if t.name == chosen)
 st.subheader(tool.name)
 st.write((tool.description or "").strip())
 
-schema = tool.input_schema
+schema = tool.inputSchema
 required = set(schema.get("required") or [])
 args = {}
 for key, spec in (schema.get("properties") or {}).items():
@@ -94,5 +94,7 @@ if st.button("Run", type="primary"):
                 if "missing env var" in str(exc):
                     st.info("Run `python get_token.py` first to write .env")
             else:
-                for block in result.content:
+                # FastMCP 1.x returns (content_blocks, structured_result)
+                blocks = result[0] if isinstance(result, tuple) else result
+                for block in blocks:
                     _render(getattr(block, "text", str(block)))

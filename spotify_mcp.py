@@ -13,12 +13,12 @@ import time
 
 import httpx
 from dotenv import load_dotenv
-from mcp.server.mcpserver import MCPServer
+from mcp.server.fastmcp import FastMCP
 
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 API = "https://api.spotify.com/v1"
-app = MCPServer("spotify")
+app = FastMCP("spotify")
 _tok = {"value": None, "expires": 0.0}
 # retries=3 because accounts.spotify.com intermittently drops the TLS handshake here
 _http = httpx.Client(timeout=30, transport=httpx.HTTPTransport(retries=3))

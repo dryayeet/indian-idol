@@ -43,8 +43,8 @@ def _parse(pairs: list[str], schema: dict) -> dict:
 
 
 def _signature(tool) -> str:
-    props = (tool.input_schema.get("properties") or {}).items()
-    required = set(tool.input_schema.get("required") or [])
+    props = (tool.inputSchema.get("properties") or {}).items()
+    required = set(tool.inputSchema.get("required") or [])
     fields = [k if k in required else f"{k}={v.get('default')!r}" for k, v in props]
     return f"{tool.name}({', '.join(fields)})"
 
@@ -67,9 +67,14 @@ def _ask(schema: dict) -> dict:
     return args
 
 
+def _blocks(result):
+    """FastMCP 1.x returns (content_blocks, structured_result); take the blocks."""
+    return result[0] if isinstance(result, tuple) else getattr(result, "content", result)
+
+
 def _show(result) -> None:
     print()
-    for block in result.content:
+    for block in _blocks(result):
         print(getattr(block, "text", block))
 
 
@@ -81,7 +86,7 @@ async def main(argv: list[str]) -> None:
         if argv[0] not in by_name:
             raise SystemExit(f"no such tool: {argv[0]}")
         tool = by_name[argv[0]]
-        _show(await app.call_tool(tool.name, _parse(argv[1:], tool.input_schema)))
+        _show(await app.call_tool(tool.name, _parse(argv[1:], tool.inputSchema)))
         return
 
     print("Tools on the Spotify MCP server:\n")
@@ -98,7 +103,7 @@ async def main(argv: list[str]) -> None:
         raise SystemExit(f"no such tool: {choice}")
 
     print(f"\n{tool.name} fields, blank keeps the default:")
-    _show(await app.call_tool(tool.name, _ask(tool.input_schema)))
+    _show(await app.call_tool(tool.name, _ask(tool.inputSchema)))
 
 
 if __name__ == "__main__":

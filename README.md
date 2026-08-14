@@ -21,6 +21,7 @@ For the full design, read [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md)
 | File | Function |
 |---|---|
 | `spotify_mcp.py` | The MCP server. Start it with `python spotify_mcp.py`. |
+| `agent.py` | The LangGraph agent. It calls the tools through MCP. |
 | `run_tool.py` | A command-line client. Use it to call one tool. |
 | `streamlit_app.py` | A web interface. It shows all the tools as forms. |
 | `requirements.txt` | The Python packages. |
@@ -30,9 +31,22 @@ For the full design, read [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md)
 1. Make a virtual environment.
 2. Install the packages with `pip install -r requirements.txt`.
 
+## The agent
+
+`agent.py` is a LangGraph ReAct agent. It starts `spotify_mcp.py` as a subprocess
+and reads the tool list through MCP. The language model comes from OpenRouter.
+
+```
+python agent.py "songs that feel like driving away from my hometown"
+```
+
+The agent translates the request into emotion values, then calls the tools.
+Set `OPENROUTER_MODEL` to change the model. The model must support tool calls.
+
 ## Credentials
 
-The server reads three environment variables from a `.env` file.
+The server reads three Spotify variables from a `.env` file.
+The agent reads `OPENROUTER_API_KEY` from the same file.
 Use `.env.example` as the pattern.
 
 1. Open the [Spotify dashboard](https://developer.spotify.com/dashboard).
@@ -70,7 +84,10 @@ Each file has an internal test. Give the `--selfcheck` argument:
 ```
 python spotify_mcp.py --selfcheck
 python run_tool.py --selfcheck
+python agent.py --selfcheck
 ```
+
+The agent test lists the tools through MCP. It does not call the language model.
 
 ## Limits
 
@@ -82,6 +99,9 @@ python run_tool.py --selfcheck
 - Spotify moved two endpoints in February 2026.
   The server uses `POST /me/playlists` and `POST /playlists/{id}/items`.
 - Spotify has no lyrics endpoint. The lyrics come from LRCLIB.
+- The `mcp` package must stay below version 2.0.
+  `langchain-mcp-adapters` does not support version 2.0 yet.
+- The agent has no memory. Each run starts a new conversation.
 - The connection to `accounts.spotify.com` can fail.
   The HTTP client then tries again three times.
 
