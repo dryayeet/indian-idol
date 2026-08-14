@@ -126,17 +126,28 @@ def search_by_feel(
     return [_track(t) for t in _call("GET", "/search", params=params)["tracks"]["items"]]
 
 
+def _uri(item: str) -> str:
+    """Take a track URI, an open.spotify.com link, or a bare id, and return a URI."""
+    item = item.strip()
+    if item.startswith("spotify:"):
+        return item
+    if "open.spotify.com" in item:
+        item = item.rsplit("/", 1)[-1].split("?")[0]
+    return f"spotify:track:{item}"
+
+
 @app.tool()
 def create_playlist(name: str, track_uris: list[str], description: str = "") -> dict:
-    """Create a private playlist for the current user and add tracks. Returns its URL."""
-    user = _call("GET", "/me")["id"]
+    """Create a private playlist and add tracks. Accepts track URIs, links, or bare ids."""
+    # /users/{id}/playlists returns a bare 403 since the Feb 2026 migration; /me/playlists is the
+    # replacement, and it saves the /me lookup that the old path needed.
     pl = _call(
-        "POST",
-        f"/users/{user}/playlists",
-        json={"name": name, "description": description, "public": False},
+        "POST", "/me/playlists", json={"name": name, "description": description, "public": False}
     )
-    for i in range(0, len(track_uris), 100):
-        _call("POST", f"/playlists/{pl['id']}/tracks", json={"uris": track_uris[i : i + 100]})
+    uris = [_uri(u) for u in track_uris]
+    for i in range(0, len(uris), 100):
+        # /items, not /tracks — same Feb 2026 migration renamed it
+        _call("POST", f"/playlists/{pl['id']}/items", json={"uris": uris[i : i + 100]})
     return {"id": pl["id"], "url": pl["external_urls"]["spotify"], "added": len(track_uris)}
 
 
@@ -147,6 +158,9 @@ if __name__ == "__main__":
         assert _feel_query(0.2, 0.2, 0.9, "") == "sad melancholy calm mellow acoustic"
         assert _feel_query(0.9, 0.9, 0.1, "80s") == "happy upbeat energetic intense 80s"
         assert _feel_query(0.5, 0.5, 0.5, "") == ""
+        assert _uri("1bMkimTb47umgNP6xCi4A1") == "spotify:track:1bMkimTb47umgNP6xCi4A1"
+        assert _uri("spotify:track:abc") == "spotify:track:abc"
+        assert _uri("https://open.spotify.com/track/xyz?si=1") == "spotify:track:xyz"
         _tok.update(value="cached", expires=time.time() + 3600)
         assert _token() == "cached"  # no network call when unexpired
         print("ok")
