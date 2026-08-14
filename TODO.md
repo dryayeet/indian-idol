@@ -16,9 +16,12 @@ Done section records what was actually finished.
 - [ ] **Add a batch lyrics tool.** `get_lyrics` is single-track, so profiling a
       week means one model round trip per song. Needed before lyric-based
       inference is practical on free-tier limits.
-- [ ] **Give the agent memory.** A checkpointer for the conversation thread, plus
-      a separate store for the trait trajectory that has to outlive any thread.
-      Without it, "next week's reading measures last week's action" cannot happen.
+- [ ] **Give the agent durable memory.** Conversation memory now exists but is
+      in-process only, so it dies with the Streamlit process. The trait trajectory
+      needs a store that outlives every thread and restart, or "next week's reading
+      measures last week's action" cannot happen. Upgrade path: swap `InMemorySaver`
+      for a SQLite checkpointer (`langgraph-checkpoint-sqlite` + `aiosqlite`), then
+      add a separate store for profiles.
 - [ ] **Add a feedback signal.** Nothing measures whether a playlist moved
       anything, so the loop stays open and the intervention claim stays unproven.
 
@@ -57,6 +60,8 @@ Done section records what was actually finished.
 
 ## Done
 
+- [x] **2026-08-15** — Chat UI with conversation memory (in-process), and track
+      links returned by the tool rather than assembled by the model.
 - [x] **2026-08-15** — Fixed the mood-query dead zone. Mid-range values produced
       an empty query that fell back to searching the word "music". `description`
       is now a required argument and carries the search; the strongest axis adds

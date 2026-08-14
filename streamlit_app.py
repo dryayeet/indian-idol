@@ -9,8 +9,10 @@ spotify_mcp.py makes it show up here with no changes to this file.
 import asyncio
 import json
 import os
+import uuid
 
 import streamlit as st
+from langgraph.checkpoint.memory import InMemorySaver
 
 import agent
 from spotify_mcp import app
@@ -60,8 +62,22 @@ def _render(text: str) -> None:
         st.json(data)
 
 
+@st.cache_resource
+def _memory():
+    """One saver for the process. Conversations live until Streamlit restarts."""
+    return InMemorySaver()
+
+
+def _draw(parts) -> None:
+    for kind, text in parts:
+        if kind == "tool":
+            st.code(text, language="python")
+        else:
+            st.markdown(text)
+
+
 def _agent_panel() -> None:
-    st.subheader("Ask the agent")
+    st.subheader("Chat")
     st.caption(f"LangGraph ReAct loop over the MCP tools, model `{agent.MODEL}`")
 
     key = os.environ.get("OPENROUTER_API_KEY")
@@ -72,27 +88,46 @@ def _agent_panel() -> None:
             help="Or put OPENROUTER_API_KEY in .env and restart.",
         )
 
-    question = st.text_area(
-        "What do you want to hear?",
-        placeholder="songs that feel like driving away from my hometown for the last time",
-    )
+    if "thread" not in st.session_state:
+        st.session_state.thread = uuid.uuid4().hex
+        st.session_state.chat = []
 
-    if st.button("Run", type="primary", disabled=not question.strip()):
-        if not key:
-            st.warning("An OpenRouter key is needed to run the agent.")
-            return
-        os.environ["OPENROUTER_API_KEY"] = key  # agent._llm() reads it at call time
+    if st.button("New conversation"):
+        st.session_state.thread = uuid.uuid4().hex
+        st.session_state.chat = []
+        st.rerun()
+
+    for role, parts in st.session_state.chat:
+        with st.chat_message(role):
+            _draw(parts) if role == "assistant" else st.markdown(parts)
+
+    question = st.chat_input("songs that feel like driving away from my hometown")
+    if not question:
+        return
+    if not key:
+        st.warning("An OpenRouter key is needed to run the agent.")
+        return
+    os.environ["OPENROUTER_API_KEY"] = key  # agent._llm() reads it at call time
+
+    st.session_state.chat.append(("user", question))
+    with st.chat_message("user"):
+        st.markdown(question)
+
+    with st.chat_message("assistant"):
         with st.spinner("thinking, searching, deciding..."):
             try:
-                parts = asyncio.run(agent.collect(question))
+                parts = asyncio.run(
+                    agent.collect(
+                        question,
+                        checkpointer=_memory(),
+                        thread_id=st.session_state.thread,
+                    )
+                )
             except Exception as exc:  # noqa: BLE001 - surface model and API failures
                 st.error(f"{type(exc).__name__}: {exc}")
                 return
-        for kind, text in parts:
-            if kind == "tool":
-                st.code(text, language="python")
-            else:
-                st.markdown(text)
+        _draw(parts)
+    st.session_state.chat.append(("assistant", parts))
 
 
 tools = _tools()

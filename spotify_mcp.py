@@ -65,6 +65,8 @@ def _track(t: dict) -> dict:
     return {
         "name": t["name"],
         "artist": ", ".join(a["name"] for a in t["artists"]),
+        # given, not left for the caller to build from the id, which invites made-up links
+        "url": f"https://open.spotify.com/track/{t['id']}",
         "uri": t["uri"],
         "id": t["id"],
     }
@@ -175,6 +177,8 @@ if __name__ == "__main__":
         assert _feel_query("rave at 3am", 0.5, 0.9, 0.5) == "rave at 3am energetic"
         assert _feel_query("campfire", 0.4, 0.6, 0.95) == "campfire acoustic"  # strongest axis
         assert _feel_query("leaving home", 0.5, 0.5, 0.5) == "leaving home"  # no "music" fallback
+        track = _track({"name": "n", "artists": [{"name": "a"}], "uri": "spotify:track:ID", "id": "ID"})
+        assert track["url"] == "https://open.spotify.com/track/ID", track
         assert _uri("1bMkimTb47umgNP6xCi4A1") == "spotify:track:1bMkimTb47umgNP6xCi4A1"
         assert _uri("spotify:track:abc") == "spotify:track:abc"
         assert _uri("https://open.spotify.com/track/xyz?si=1") == "spotify:track:xyz"

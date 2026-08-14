@@ -130,6 +130,11 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-15** — Conversation memory and a chat UI. `agent.collect()` accepts a
+  checkpointer and a `thread_id`; the Streamlit app holds one `InMemorySaver` per
+  process (`@st.cache_resource`) and one thread per browser session, so follow-ups
+  resolve against earlier turns. History is lost on restart, by choice. Tracks now
+  carry a `url`, so links come from the tool instead of being built by the model.
 - **2026-08-15** — `search_by_feel` now takes a required `description` that carries
   the search, with the numbers demoted to a single modifier word. Removed the
   `"music"` fallback: mid-range values used to produce an empty query, so the tool

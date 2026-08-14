@@ -43,6 +43,10 @@ Search once with your best description, then report what came back. If the resul
 genuinely miss, change the description before searching again — repeating a search
 with the same words returns the same tracks.
 
+When you list tracks, give each one as a markdown link using the `url` the tool
+returned, like [Title](url), followed by the artist. Never build a link yourself from
+an id; use the url as given.
+
 Only create a playlist when the user asks for one. When you build one, say what you
 were aiming for in its description."""
 
@@ -71,12 +75,24 @@ def _parts(message) -> list[tuple[str, str]]:
     return [("text", text.strip())] if text.strip() else []
 
 
-async def collect(question: str) -> list[tuple[str, str]]:
-    """Run the agent to completion. Returns every tool call and reply, in order."""
+async def build(checkpointer=None):
+    """Compile the agent. Pass a checkpointer to give it memory across turns."""
     tools = await MultiServerMCPClient(SERVERS).get_tools()
-    graph = create_react_agent(_llm(), tools, prompt=SYSTEM)
+    return create_react_agent(_llm(), tools, prompt=SYSTEM, checkpointer=checkpointer)
+
+
+async def collect(question: str, checkpointer=None, thread_id: str | None = None):
+    """Run one turn to completion. Returns every tool call and reply, in order.
+
+    With a checkpointer and a thread_id, earlier turns on that thread are in scope,
+    so follow-ups like "make that a playlist" resolve.
+    """
+    graph = await build(checkpointer)
+    config = {"configurable": {"thread_id": thread_id}} if checkpointer else None
     out = []
-    async for step in graph.astream({"messages": [("user", question)]}, stream_mode="values"):
+    async for step in graph.astream(
+        {"messages": [("user", question)]}, config, stream_mode="values"
+    ):
         out += _parts(step["messages"][-1])
     return out
 
