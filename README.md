@@ -2,7 +2,8 @@
 
 This is the Spotify tool server for the autonomous Spotify agent.
 It is an MCP server. It gives an agent five tools for the Spotify Web API.
-For the full design, read [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md).
+For the intent, read [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md).
+For what is built and why, read [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Tools
 
