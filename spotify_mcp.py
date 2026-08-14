@@ -12,11 +12,16 @@ import os
 import time
 
 import httpx
-from mcp.server.fastmcp import FastMCP
+from dotenv import load_dotenv
+from mcp.server.mcpserver import MCPServer
+
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 API = "https://api.spotify.com/v1"
-app = FastMCP("spotify")
+app = MCPServer("spotify")
 _tok = {"value": None, "expires": 0.0}
+# retries=3 because accounts.spotify.com intermittently drops the TLS handshake here
+_http = httpx.Client(timeout=30, transport=httpx.HTTPTransport(retries=3))
 
 
 def _token() -> str:
@@ -30,7 +35,7 @@ def _token() -> str:
         )
     except KeyError as e:
         raise RuntimeError(f"missing env var {e.args[0]}") from None
-    r = httpx.post(
+    r = _http.post(
         "https://accounts.spotify.com/api/token",
         data={"grant_type": "refresh_token", "refresh_token": refresh},
         auth=(cid, secret),
@@ -43,9 +48,7 @@ def _token() -> str:
 
 
 def _call(method: str, path: str, **kw) -> dict:
-    r = httpx.request(
-        method, API + path, headers={"Authorization": f"Bearer {_token()}"}, timeout=30, **kw
-    )
+    r = _http.request(method, API + path, headers={"Authorization": f"Bearer {_token()}"}, **kw)
     if r.status_code == 429:
         raise RuntimeError(f"rate limited, retry after {r.headers.get('Retry-After', '?')}s")
     r.raise_for_status()
@@ -78,11 +81,10 @@ def top_tracks(limit: int = 20, time_range: str = "short_term") -> list[dict]:
 @app.tool()
 def get_lyrics(track: str, artist: str) -> str:
     """Plain lyrics for a track from LRCLIB. Empty string if not found or instrumental."""
-    r = httpx.get(
+    r = _http.get(
         "https://lrclib.net/api/get",
         params={"track_name": track, "artist_name": artist},
         headers={"User-Agent": "spotify-agent (https://github.com/)"},
-        timeout=20,
     )
     if r.status_code == 404:
         return ""
