@@ -26,9 +26,9 @@ actually built, why it is built that way, and what the environment forces.
                    ▼                         ▼
           Spotify Web API              LRCLIB (lyrics)
 
-   Manual clients, same tools, no LLM:
-     run_tool.py        CLI, interactive or key=value
-     streamlit_app.py   web forms generated from the tool schemas
+   Other clients of the same tools:
+     run_tool.py        CLI, interactive or key=value, no LLM
+     streamlit_app.py   two modes: the agent above, or the tools as forms
 ```
 
 The agent holds all state (currently only within a single run). The MCP server is
@@ -42,7 +42,7 @@ MCP client, not just this agent.
 | [spotify_mcp.py](spotify_mcp.py) | MCP server. Five tools, token refresh, HTTP retries. | `python spotify_mcp.py` (stdio) |
 | [agent.py](agent.py) | LangGraph `create_react_agent`. Launches the server over stdio, reads its tool list, loops model ↔ tools. | `python agent.py "..."` |
 | [run_tool.py](run_tool.py) | Manual tool runner. Lists tools, prompts for fields, prints results. | `python run_tool.py` |
-| [streamlit_app.py](streamlit_app.py) | Web UI. Widgets generated from each tool's `inputSchema`. | `streamlit run streamlit_app.py` |
+| [streamlit_app.py](streamlit_app.py) | Web UI. Agent mode runs `agent.collect()`; Tools mode generates widgets from each tool's `inputSchema`. | `streamlit run streamlit_app.py` |
 | [.env.example](.env.example) | The five environment variables. | copy to `.env` |
 
 Adding a tool to `spotify_mcp.py` makes it appear in all three clients with no other
@@ -129,6 +129,9 @@ Ordered by how much they block the abstract.
 
 ## Changelog
 
+- **2026-08-15** — Added an Agent mode to the Streamlit app. `agent.collect()` is
+  now the shared entry point for the CLI and the UI. The agent's MCP subprocess
+  runs correctly from Streamlit's worker thread, which was the open risk.
 - **2026-08-15** — Reverted the server to `FastMCP` and pinned `mcp<2.0.0` so
   `langchain-mcp-adapters` works. Agent now reaches the tools over MCP stdio
   instead of importing them. LLM provider switched from Anthropic direct to

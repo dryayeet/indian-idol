@@ -8,9 +8,11 @@ spotify_mcp.py makes it show up here with no changes to this file.
 
 import asyncio
 import json
+import os
 
 import streamlit as st
 
+import agent
 from spotify_mcp import app
 
 if __name__ == "__main__" and not st.runtime.exists():
@@ -58,19 +60,60 @@ def _render(text: str) -> None:
         st.json(data)
 
 
+def _agent_panel() -> None:
+    st.subheader("Ask the agent")
+    st.caption(f"LangGraph ReAct loop over the MCP tools, model `{agent.MODEL}`")
+
+    key = os.environ.get("OPENROUTER_API_KEY")
+    if not key:
+        key = st.text_input(
+            "OpenRouter API key",
+            type="password",
+            help="Or put OPENROUTER_API_KEY in .env and restart.",
+        )
+
+    question = st.text_area(
+        "What do you want to hear?",
+        placeholder="songs that feel like driving away from my hometown for the last time",
+    )
+
+    if st.button("Run", type="primary", disabled=not question.strip()):
+        if not key:
+            st.warning("An OpenRouter key is needed to run the agent.")
+            return
+        os.environ["OPENROUTER_API_KEY"] = key  # agent._llm() reads it at call time
+        with st.spinner("thinking, searching, deciding..."):
+            try:
+                parts = asyncio.run(agent.collect(question))
+            except Exception as exc:  # noqa: BLE001 - surface model and API failures
+                st.error(f"{type(exc).__name__}: {exc}")
+                return
+        for kind, text in parts:
+            if kind == "tool":
+                st.code(text, language="python")
+            else:
+                st.markdown(text)
+
+
 tools = _tools()
 names = [t.name for t in tools]
 
 st.title("🎧 Spotify MCP")
-st.caption("Same tools the agent calls, driven by hand.")
+st.caption("An agent over the tools, or the tools by hand.")
 
 with st.sidebar:
-    st.header("Tools")
-    chosen = st.radio("Pick one", names, label_visibility="collapsed")
+    st.header("Mode")
+    mode = st.radio("Mode", ["Agent", "Tools"], label_visibility="collapsed")
     st.divider()
+    st.caption("Tools on the server")
     for tool in tools:
         st.markdown(f"**{tool.name}**  \n{(tool.description or '').strip()}")
 
+if mode == "Agent":
+    _agent_panel()
+    st.stop()
+
+chosen = st.selectbox("Tool", names)
 tool = next(t for t in tools if t.name == chosen)
 st.subheader(tool.name)
 st.write((tool.description or "").strip())

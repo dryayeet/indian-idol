@@ -57,25 +57,31 @@ def _llm():
     )
 
 
-def _show(message) -> None:
+def _parts(message) -> list[tuple[str, str]]:
+    """One message as [(kind, text)], where kind is 'tool' or 'text'."""
     if calls := getattr(message, "tool_calls", None):
-        for call in calls:
-            print(f"  -> {call['name']}({call['args']})")
-        return
+        return [("tool", f"{c['name']}({c['args']})") for c in calls]
     if message.type != "ai" or not message.content:
-        return
+        return []
     text = message.content
     if isinstance(text, list):  # content blocks when the model thinks
         text = "".join(b.get("text", "") for b in text if isinstance(b, dict))
-    if text.strip():
-        print(f"\n{text.strip()}")
+    return [("text", text.strip())] if text.strip() else []
+
+
+async def collect(question: str) -> list[tuple[str, str]]:
+    """Run the agent to completion. Returns every tool call and reply, in order."""
+    tools = await MultiServerMCPClient(SERVERS).get_tools()
+    graph = create_react_agent(_llm(), tools, prompt=SYSTEM)
+    out = []
+    async for step in graph.astream({"messages": [("user", question)]}, stream_mode="values"):
+        out += _parts(step["messages"][-1])
+    return out
 
 
 async def main(question: str) -> None:
-    tools = await MultiServerMCPClient(SERVERS).get_tools()
-    agent = create_react_agent(_llm(), tools, prompt=SYSTEM)
-    async for step in agent.astream({"messages": [("user", question)]}, stream_mode="values"):
-        _show(step["messages"][-1])
+    for kind, text in await collect(question):
+        print(f"  -> {text}" if kind == "tool" else f"\n{text}")
 
 
 async def _selfcheck() -> None:
