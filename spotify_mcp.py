@@ -98,36 +98,46 @@ def get_lyrics(track: str, artist: str) -> str:
     return r.json().get("plainLyrics") or ""
 
 
-def _feel_query(valence: float, energy: float, acousticness: float, extra: str) -> str:
-    words = []
-    if valence < 0.35:
-        words.append("sad melancholy")
-    elif valence > 0.65:
-        words.append("happy upbeat")
-    if energy < 0.35:
-        words.append("calm mellow")
-    elif energy > 0.65:
-        words.append("energetic intense")
-    if acousticness > 0.6:
-        words.append("acoustic")
-    if extra:
-        words.append(extra)
-    return " ".join(words)
+def _feel_query(description: str, valence: float, energy: float, acousticness: float) -> str:
+    """The description carries the search; the strongest mood axis adds one word.
+
+    Spotify's search matches text, not feeling, so a pile of mood adjectives just
+    matches song titles containing those adjectives. One word is the useful dose.
+    """
+    axes = {
+        "valence": (valence, "sad", "happy"),
+        "energy": (energy, "calm", "energetic"),
+        "acousticness": (acousticness, "electronic", "acoustic"),
+    }
+    _, (value, low, high) = max(axes.items(), key=lambda kv: abs(kv[1][0] - 0.5))
+    description = description.strip()
+    if abs(value - 0.5) < 0.15:  # nothing stands out; the description is enough
+        return description
+    return f"{description} {high if value > 0.5 else low}"
 
 
 @app.tool()
 def search_by_feel(
+    description: str,
     valence: float = 0.5,
     energy: float = 0.5,
     acousticness: float = 0.5,
-    extra_query: str = "",
     limit: int = 20,
 ) -> list[dict]:
-    """Search tracks by affective targets in [0,1] plus optional free text (genre, year, artist)."""
+    """Find tracks matching a mood.
+
+    description: what the music should feel like or be about, in a few evocative words
+        ("driving away at night", "heartbreak in a hotel room"). This does the work, so
+        write it carefully. Genre, era, and artist go here too.
+    valence: 0 sad to 1 happy. energy: 0 calm to 1 intense.
+    acousticness: 0 produced to 1 acoustic. Leave one at 0.5 if it does not matter.
+    """
     # ponytail: keyword search, not /v1/recommendations + target_valence — that endpoint and
     # /v1/audio-features were deprecated for new apps on 2024-11-27 and return 403. Swap back
     # to real feature targeting only if this app gets extended-mode access.
-    q = _feel_query(valence, energy, acousticness, extra_query) or "music"
+    if not description.strip():
+        raise ValueError("description is required — say what the music should feel like")
+    q = _feel_query(description, valence, energy, acousticness)
     params = {"q": q, "type": "track", "limit": min(limit, 50)}
     return [_track(t) for t in _call("GET", "/search", params=params)["tracks"]["items"]]
 
@@ -161,9 +171,10 @@ if __name__ == "__main__":
     import sys
 
     if "--selfcheck" in sys.argv:
-        assert _feel_query(0.2, 0.2, 0.9, "") == "sad melancholy calm mellow acoustic"
-        assert _feel_query(0.9, 0.9, 0.1, "80s") == "happy upbeat energetic intense 80s"
-        assert _feel_query(0.5, 0.5, 0.5, "") == ""
+        assert _feel_query("leaving home", 0.2, 0.5, 0.5) == "leaving home sad"
+        assert _feel_query("rave at 3am", 0.5, 0.9, 0.5) == "rave at 3am energetic"
+        assert _feel_query("campfire", 0.4, 0.6, 0.95) == "campfire acoustic"  # strongest axis
+        assert _feel_query("leaving home", 0.5, 0.5, 0.5) == "leaving home"  # no "music" fallback
         assert _uri("1bMkimTb47umgNP6xCi4A1") == "spotify:track:1bMkimTb47umgNP6xCi4A1"
         assert _uri("spotify:track:abc") == "spotify:track:abc"
         assert _uri("https://open.spotify.com/track/xyz?si=1") == "spotify:track:xyz"

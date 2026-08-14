@@ -104,7 +104,8 @@ debugging cycle.
 
 ## Gaps
 
-Ordered by how much they block the abstract.
+Ordered by how much they block the abstract. The actionable form of this list,
+with everything else still owed, is [TODO.md](TODO.md).
 
 1. **No psych/emotion MCP server.** `get_big_five()` and `get_emotion_labels()` do
    not exist, so no trait or emotion inference happens anywhere. The weekly drift
@@ -129,6 +130,11 @@ Ordered by how much they block the abstract.
 
 ## Changelog
 
+- **2026-08-15** — `search_by_feel` now takes a required `description` that carries
+  the search, with the numbers demoted to a single modifier word. Removed the
+  `"music"` fallback: mid-range values used to produce an empty query, so the tool
+  searched the literal word "music". Default model is `openai/gpt-5.4-mini`.
+  Added [TODO.md](TODO.md).
 - **2026-08-15** — Added an Agent mode to the Streamlit app. `agent.collect()` is
   now the shared entry point for the CLI and the UI. The agent's MCP subprocess
   runs correctly from Streamlit's worker thread, which was the open risk.

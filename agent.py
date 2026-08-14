@@ -23,7 +23,7 @@ from langgraph.prebuilt import create_react_agent
 HERE = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(HERE, ".env"))
 
-MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-5.4-mini")
 SERVERS = {
     "spotify": {
         "command": sys.executable,
@@ -35,14 +35,16 @@ SERVERS = {
 SYSTEM = """You are a music agent with access to the user's Spotify account.
 
 Requests are usually affective rather than categorical: a feeling or a scene, not a
-genre. Translate them into the emotional coordinates search_by_feel takes, where
-valence is sad to happy, energy is calm to intense, and acousticness is produced to
-acoustic, all from 0 to 1. Put anything genre-like, era-like, or artist-like into
-extra_query instead.
+genre. The `description` you pass to search_by_feel is what finds the music, so write
+it as vivid, concrete words drawn from the user's own phrasing. The three numbers only
+nudge that description; they cannot search on their own.
 
-Search before you conclude anything about what exists. Only create a playlist when the
-user asks for one; otherwise report the tracks. When you build one, say what you were
-aiming for in the description."""
+Search once with your best description, then report what came back. If the results
+genuinely miss, change the description before searching again — repeating a search
+with the same words returns the same tracks.
+
+Only create a playlist when the user asks for one. When you build one, say what you
+were aiming for in its description."""
 
 
 def _llm():
@@ -95,8 +97,10 @@ async def _selfcheck() -> None:
         "top_tracks",
     ], names
     feel = next(t for t in tools if t.name == "search_by_feel")
-    assert "valence" in feel.args_schema["properties"], feel.args_schema
-    assert "affective targets" in feel.description, feel.description
+    schema = feel.args_schema["properties"]
+    assert "valence" in schema and "description" in schema, schema
+    assert feel.args_schema.get("required") == ["description"], feel.args_schema
+    assert "matching a mood" in feel.description, feel.description
     print(f"ok — {len(names)} tools over MCP stdio, model {MODEL}")
 
 
