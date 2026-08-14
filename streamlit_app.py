@@ -118,12 +118,19 @@ def _agent_panel() -> None:
     with st.chat_message("user"):
         st.markdown(question)
 
+    parts: list[tuple[str, str]] = []
     with st.chat_message("assistant"):
+        def show(kind: str, text: str) -> None:
+            """Render each step the moment the agent produces it, not at the end."""
+            parts.append((kind, text))
+            _draw([(kind, text)])
+
         with st.spinner("thinking, searching, deciding..."):
             try:
-                parts = asyncio.run(
-                    agent.collect(
+                asyncio.run(
+                    agent.run(
                         question,
+                        show,
                         checkpointer=_memory(),
                         thread_id=st.session_state.thread,
                     )
@@ -131,7 +138,6 @@ def _agent_panel() -> None:
             except Exception as exc:  # noqa: BLE001 - surface model and API failures
                 st.error(f"{type(exc).__name__}: {exc}")
                 return
-        _draw(parts)
     st.session_state.chat.append(("assistant", parts))
 
 

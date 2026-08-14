@@ -35,13 +35,16 @@ SERVERS = {
 SYSTEM = """You are a music agent with access to the user's Spotify account.
 
 Requests are usually affective rather than categorical: a feeling or a scene, not a
-genre. The `description` you pass to search_by_feel is what finds the music, so write
-it as vivid, concrete words drawn from the user's own phrasing. The three numbers only
-nudge that description; they cannot search on their own.
+genre. Your job is to turn that feeling into words a song might actually be called.
 
-Search once with your best description, then report what came back. If the results
-genuinely miss, change the description before searching again — repeating a search
-with the same words returns the same tracks.
+search_by_feel matches song, artist, and album names, so `description` should be two
+to five title-like words, not a sentence and not a mood description. "driving away
+from my hometown for the last time" is a request, not a query; "leaving home" and
+"small town" are queries. The three numbers only nudge it and cannot search alone.
+
+The search always returns something, even for nonsense, so read the results before
+trusting them. If they do not fit, search again with different words rather than the
+same ones, and try more than one phrasing when the request is vague.
 
 When you list tracks, give each one as a markdown link using the `url` the tool
 returned, like [Title](url), followed by the artist. Never build a link yourself from
@@ -81,25 +84,30 @@ async def build(checkpointer=None):
     return create_react_agent(_llm(), tools, prompt=SYSTEM, checkpointer=checkpointer)
 
 
-async def collect(question: str, checkpointer=None, thread_id: str | None = None):
-    """Run one turn to completion. Returns every tool call and reply, in order.
+async def run(question: str, on_part, checkpointer=None, thread_id: str | None = None):
+    """Run one turn, calling on_part(kind, text) as each tool call and reply arrives.
 
     With a checkpointer and a thread_id, earlier turns on that thread are in scope,
     so follow-ups like "make that a playlist" resolve.
     """
     graph = await build(checkpointer)
     config = {"configurable": {"thread_id": thread_id}} if checkpointer else None
-    out = []
     async for step in graph.astream(
         {"messages": [("user", question)]}, config, stream_mode="values"
     ):
-        out += _parts(step["messages"][-1])
+        for part in _parts(step["messages"][-1]):
+            on_part(*part)
+
+
+async def collect(question: str, **kw) -> list[tuple[str, str]]:
+    """run(), buffered. Returns every tool call and reply, in order."""
+    out: list[tuple[str, str]] = []
+    await run(question, lambda kind, text: out.append((kind, text)), **kw)
     return out
 
 
 async def main(question: str) -> None:
-    for kind, text in await collect(question):
-        print(f"  -> {text}" if kind == "tool" else f"\n{text}")
+    await run(question, lambda kind, text: print(f"  -> {text}" if kind == "tool" else f"\n{text}"))
 
 
 async def _selfcheck() -> None:

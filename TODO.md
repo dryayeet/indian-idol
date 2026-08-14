@@ -32,9 +32,13 @@ Done section records what was actually finished.
       right tool, did it write a usable `description`, did it avoid redundant
       repeat searches. gpt-4o-mini failed the third badly; gpt-5.4-mini passed on
       one sample, which is not evidence yet.
-- [ ] **Stream agent output in the Streamlit app.** `agent.collect()` returns only
-      when the whole run finishes, so the UI shows a spinner and then everything
-      at once. The CLI has the same shape.
+- [ ] **Stream tokens, not just steps.** Steps now appear as they happen, but each
+      reply still lands as one block because `stream_mode="values"` emits per node.
+      Token-level streaming needs `stream_mode="messages"`.
+- [ ] **Detect empty search results.** Spotify's search never returns nothing: a
+      meaningless query still yields arbitrary tracks (verified with
+      `q="qwertypoiu zxcvbnm asdfgh"`). The agent cannot tell a good match from
+      noise, so a bad description is presented as a real answer.
 - [ ] **Retry on Spotify 429.** `_call` raises with the `Retry-After` value but
       does not wait and retry. A week of listening scored in one run will hit it.
 - [ ] **Test beyond the selfchecks.** They cover pure logic (query building, env
@@ -60,6 +64,8 @@ Done section records what was actually finished.
 
 ## Done
 
+- [x] **2026-08-15** — Streaming steps in the chat: tool calls render as they are
+      made, not after the run finishes.
 - [x] **2026-08-15** — Chat UI with conversation memory (in-process), and track
       links returned by the tool rather than assembled by the model.
 - [x] **2026-08-15** — Fixed the mood-query dead zone. Mid-range values produced

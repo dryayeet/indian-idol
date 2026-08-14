@@ -128,11 +128,16 @@ def search_by_feel(
 ) -> list[dict]:
     """Find tracks matching a mood.
 
-    description: what the music should feel like or be about, in a few evocative words
-        ("driving away at night", "heartbreak in a hotel room"). This does the work, so
-        write it carefully. Genre, era, and artist go here too.
+    description: two to five words that could plausibly appear in a song or album
+        title, such as "leaving home", "midnight drive", "hotel heartbreak". Spotify
+        matches this against track, artist, and album names only, never against
+        lyrics or mood, so long poetic phrases are mostly ignored. Genre, era, and
+        artist names work well here.
     valence: 0 sad to 1 happy. energy: 0 calm to 1 intense.
     acousticness: 0 produced to 1 acoustic. Leave one at 0.5 if it does not matter.
+
+    The search never returns nothing: an unmatched query still yields arbitrary
+    tracks. Judge whether the results actually fit before presenting them.
     """
     # ponytail: keyword search, not /v1/recommendations + target_valence — that endpoint and
     # /v1/audio-features were deprecated for new apps on 2024-11-27 and return 403. Swap back

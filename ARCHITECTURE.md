@@ -130,6 +130,14 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-15** — Told the model the truth about the search engine. Probing
+  `/v1/search` showed it matches track, artist, and album names only, ignores most
+  of a long phrase, and never returns empty (gibberish still yields tracks). The
+  `description` docstring and the system prompt now ask for two to five title-like
+  words and warn that results need judging.
+- **2026-08-15** — `agent.run(question, on_part, ...)` streams each tool call and
+  reply through a callback as it happens; `collect()` is now a buffered wrapper on
+  it. The Streamlit chat renders each step on arrival instead of after the run.
 - **2026-08-15** — Conversation memory and a chat UI. `agent.collect()` accepts a
   checkpointer and a `thread_id`; the Streamlit app holds one `InMemorySaver` per
   process (`@st.cache_resource`) and one thread per browser session, so follow-ups
