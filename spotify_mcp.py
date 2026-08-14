@@ -41,7 +41,11 @@ def _token() -> str:
         auth=(cid, secret),
         timeout=20,
     )
-    r.raise_for_status()
+    if r.status_code != 200:
+        raise RuntimeError(
+            f"token refresh failed ({r.status_code}): {r.text[:200]}. "
+            "Check SPOTIFY_CLIENT_ID / SECRET / REFRESH_TOKEN are set correctly."
+        )
     d = r.json()
     _tok.update(value=d["access_token"], expires=time.time() + d["expires_in"])
     return _tok["value"]
@@ -51,7 +55,9 @@ def _call(method: str, path: str, **kw) -> dict:
     r = _http.request(method, API + path, headers={"Authorization": f"Bearer {_token()}"}, **kw)
     if r.status_code == 429:
         raise RuntimeError(f"rate limited, retry after {r.headers.get('Retry-After', '?')}s")
-    r.raise_for_status()
+    if r.status_code >= 400:
+        # Spotify puts the actual reason in the body; raise_for_status alone hides it
+        raise RuntimeError(f"{method} {path} -> {r.status_code}: {r.text[:300]}")
     return r.json() if r.content else {}
 
 
