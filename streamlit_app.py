@@ -99,7 +99,12 @@ def _agent_panel() -> None:
 
     for role, parts in st.session_state.chat:
         with st.chat_message(role):
-            _draw(parts) if role == "assistant" else st.markdown(parts)
+            # plain if/else, not a ternary: a bare expression here would be a statement
+            # whose value Streamlit's magic renders (st.markdown returns a DeltaGenerator)
+            if role == "assistant":
+                _draw(parts)
+            else:
+                st.markdown(parts)
 
     question = st.chat_input("songs that feel like driving away from my hometown")
     if not question:
