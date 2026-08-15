@@ -30,6 +30,7 @@ For what is still owed, read [TODO.md](TODO.md).
 | `agent.py` | The LangGraph agent. It calls the tools through MCP. |
 | `get_token.py` | Mints the refresh token. Run it again when the scopes change. |
 | `bakeoff.py` | Scores models on the agent's job. Run `python bakeoff.py`. |
+| `ui_check.py` | Drives the web interface headlessly. Run `python ui_check.py`. |
 | `run_tool.py` | A command-line client. Use it to call one tool. |
 | `streamlit_app.py` | A web interface. It shows all the tools as forms. |
 | `requirements.txt` | The Python packages. |
@@ -63,8 +64,10 @@ The model must support tool calls.
 
 ## Modes
 
-The chat gives three levels of control over the tools. Change the mode with a
-slash command in the chat bar. This is the only way to change it.
+The chat gives three levels of control over the tools. Change the mode with the
+buttons above the chat bar, or with a slash command in the chat bar. The two stay
+in step: a slash command moves the buttons, and a button press is the same as the
+command.
 
 | Mode | Effect |
 |---|---|
@@ -123,6 +126,7 @@ python spotify_mcp.py --selfcheck
 python run_tool.py --selfcheck
 python agent.py --selfcheck
 python bakeoff.py --selfcheck
+python ui_check.py
 ```
 
 The agent test lists the tools through MCP. It does not call the language model.

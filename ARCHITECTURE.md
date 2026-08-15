@@ -43,6 +43,7 @@ stays usable by any MCP client, not just this agent.
 |---|---|---|
 | [spotify_mcp.py](spotify_mcp.py) | MCP server. Nine tools, token refresh, HTTP retries. | `python spotify_mcp.py` (stdio) |
 | [agent.py](agent.py) | LangGraph `create_react_agent`. Launches the server over stdio, reads its tool list, loops model ↔ tools. | `python agent.py "..."` |
+| [ui_check.py](ui_check.py) | Runs the Streamlit app under its own test harness and asserts the mode controls agree. No model calls. | `python ui_check.py` |
 | [bakeoff.py](bakeoff.py) | Scores models on the four cases that matter here: right tool, no forbidden writes, no repeated calls, usable answer. | `python bakeoff.py` |
 | [run_tool.py](run_tool.py) | Manual tool runner. Lists tools, prompts for fields, prints results. | `python run_tool.py` |
 | [streamlit_app.py](streamlit_app.py) | Web UI. Agent mode streams `agent.run()` into a chat; Tools mode generates widgets from each tool's `inputSchema`. | `streamlit run streamlit_app.py` |
@@ -146,8 +147,14 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
-- **2026-08-16** — Three approval modes (`manual`, `afk`, `auto`), toggled only by
-  slash command in the chat bar. Built on `interrupt_before=["tools"]` plus the
+- **2026-08-16** — Mode buttons added beside the chat bar. First attempt crashed:
+  Streamlit forbids assigning to a widget's key once that widget has rendered, and
+  the chat input is handled after the buttons, so a slash command blew up trying to
+  move them. The key now carries the mode (`mode_picker_<mode>`), so changing mode
+  builds a fresh widget that reads the new default. `ui_check.py` covers it.
+- **2026-08-16** — Three approval modes (`manual`, `afk`, `auto`), set by buttons
+  above the chat bar or by slash command; both write `session_state.mode`, and the
+  command also writes the widget's key so the buttons never show a stale mode. Built on `interrupt_before=["tools"]` plus the
   checkpointer: the graph parks before the tool node, `_drive()` auto-resumes calls
   the mode permits and returns the rest for approval, and a decline writes a
   `ToolMessage` so the model reacts instead of hanging. Verified that a gated call

@@ -85,12 +85,28 @@ HELP = (
 )
 
 
+def _mode_key() -> str:
+    """Widget key carrying the current mode.
+
+    Streamlit forbids writing a widget's key once the widget has rendered, so a
+    slash command cannot push its value into the buttons. Changing the key instead
+    makes Streamlit build a fresh widget that takes `default` from the new mode.
+    """
+    return f"mode_picker_{st.session_state.mode}"
+
+
+def _set_mode() -> None:
+    """Called when the buttons change. The mode has not moved yet, so the key holds."""
+    if picked := st.session_state.get(_mode_key()):
+        st.session_state.mode = picked  # None means deselected; keep the old mode
+
+
 def _command(text: str) -> None:
     """Slash commands typed in the chat bar. The only way to change mode."""
     word = text.strip().lstrip("/").split()[0].lower() if text.strip("/ ") else "help"
     st.session_state.chat.append(("user", text))
     if word in agent.MODES:
-        st.session_state.mode = word
+        st.session_state.mode = word  # the buttons follow via _mode_key()
         reply = f"Mode is now **{word}** — {agent.MODES[word]}."
     elif word == "mode":
         reply = f"Mode is **{st.session_state.mode}** — {agent.MODES[st.session_state.mode]}."
@@ -156,13 +172,22 @@ def _agent_panel() -> None:
         st.session_state.mode = "afk"
         st.session_state.pending = None
 
-    left, right = st.columns([3, 1])
-    left.caption(f"mode **{st.session_state.mode}** — {agent.MODES[st.session_state.mode]}")
+    picker, right = st.columns([3, 1])
+    with picker:
+        st.segmented_control(
+            "Mode",
+            list(agent.MODES),
+            default=st.session_state.mode,
+            key=_mode_key(),
+            on_change=_set_mode,
+            label_visibility="collapsed",
+        )
     if right.button("New conversation"):
         st.session_state.thread = uuid.uuid4().hex
         st.session_state.chat = []
         st.session_state.pending = None
         st.rerun()
+    st.caption(agent.MODES[st.session_state.mode])
 
     for role, parts in st.session_state.chat:
         with st.chat_message(role):
