@@ -147,6 +147,12 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-16** — Bake-off run on OpenRouter, $0.15 for five models over four cases.
+  Four tied at 20/20 (gpt-5.4-mini, qwen3.7-flash, qwen3.7-max, qwen3.7-plus);
+  ling-3.0-flash took 19/20. **No model change**: the score tied, and the incumbent
+  `openai/gpt-5.4-mini` also won both tiebreakers by a wide margin, 6 tool calls and
+  46.6s against 13/105s for the next best. The rubric saturated, so efficiency, not
+  correctness, is what separated these models.
 - **2026-08-16** — Mode buttons added beside the chat bar. First attempt crashed:
   Streamlit forbids assigning to a widget's key once that widget has rendered, and
   the chat input is handled after the buttons, so a slash command blew up trying to
