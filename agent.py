@@ -22,6 +22,7 @@ import sys
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
+from langchain_core.messages import ToolMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
 from langchain_openai import ChatOpenAI
@@ -123,8 +124,30 @@ def _parts(message) -> list[tuple[str, str]]:
     return [("text", text.strip())] if text.strip() else []
 
 
+PLAYLIST_TOOLS = {"my_playlists", "playlist_tracks", "create_playlist"}
+MODES = {
+    "manual": "every tool call waits for you",
+    "afk": "reads run freely, playlist tools wait for you",
+    "auto": "everything runs, nothing waits",
+}
+
+
+def needs_approval(mode: str, tool: str) -> bool:
+    """Whether this mode makes this tool wait for the user."""
+    if mode == "auto":
+        return False
+    if mode == "afk":
+        return tool in PLAYLIST_TOOLS
+    return True  # manual
+
+
 @asynccontextmanager
-async def build(checkpointer=None, model: str | None = None, provider: str | None = None):
+async def build(
+    checkpointer=None,
+    model: str | None = None,
+    provider: str | None = None,
+    gated: bool = False,
+):
     """Compile the agent over ONE MCP session, held open for the whole turn.
 
     Without the session, every tool call opens its own stdio connection: a new
@@ -134,7 +157,12 @@ async def build(checkpointer=None, model: str | None = None, provider: str | Non
     async with MultiServerMCPClient(SERVERS).session("spotify") as session:
         tools = await load_mcp_tools(session)
         yield create_react_agent(
-            _llm(model, provider), tools, prompt=SYSTEM, checkpointer=checkpointer
+            _llm(model, provider),
+            tools,
+            prompt=SYSTEM,
+            checkpointer=checkpointer,
+            # pause before the tool node so a mode can hold calls for approval
+            interrupt_before=["tools"] if gated else None,
         )
 
 
@@ -175,6 +203,64 @@ async def run(
             elif tool_calls := [p for p in _parts(payload["messages"][-1]) if p[0] == "tool"]:
                 for part in tool_calls:  # replies come from the token stream instead
                     on_part(*part)
+
+
+async def _drive(graph, config, start, on_part, mode: str) -> list[dict]:
+    """Stream until the turn ends or a tool call needs the user. Returns what waits.
+
+    Calls the mode allows are resumed automatically, so only gated ones ever stop
+    the turn. An empty list means the turn finished.
+    """
+    inp = start
+    while True:
+        async for kind, payload in graph.astream(
+            inp, config, stream_mode=["values", "messages"]
+        ):
+            if kind == "messages":
+                if text := _token(payload[0]):
+                    on_part("token", text)
+            elif calls := [p for p in _parts(payload["messages"][-1]) if p[0] == "tool"]:
+                for part in calls:
+                    on_part(*part)
+
+        state = await graph.aget_state(config)
+        if not state.next:  # nothing pending, the model has finished
+            return []
+        pending = state.values["messages"][-1].tool_calls
+        if any(needs_approval(mode, c["name"]) for c in pending):
+            return pending
+        inp = None  # allowed by the mode, keep going without asking
+
+
+async def turn(question, on_part, *, checkpointer, thread_id, mode="afk", **kw):
+    """One user message. Returns the tool calls waiting for approval, if any."""
+    async with build(checkpointer, kw.get("model"), kw.get("provider"), mode != "auto") as g:
+        config = {"configurable": {"thread_id": thread_id}}
+        return await _drive(g, config, {"messages": [("user", question)]}, on_part, mode)
+
+
+async def decide(approve: bool, on_part, *, checkpointer, thread_id, mode="afk", **kw):
+    """Answer a pending approval, then carry the turn on. Returns the next wait."""
+    async with build(checkpointer, kw.get("model"), kw.get("provider"), mode != "auto") as g:
+        config = {"configurable": {"thread_id": thread_id}}
+        if not approve:
+            # answer each call with a refusal so the model can react instead of hanging
+            pending = (await g.aget_state(config)).values["messages"][-1].tool_calls
+            await g.aupdate_state(
+                config,
+                {
+                    "messages": [
+                        ToolMessage(
+                            content="The user declined this tool call.",
+                            tool_call_id=c["id"],
+                            name=c["name"],
+                        )
+                        for c in pending
+                    ]
+                },
+                as_node="tools",
+            )
+        return await _drive(g, config, None, on_part, mode)
 
 
 async def collect(question: str, **kw) -> list[tuple[str, str]]:

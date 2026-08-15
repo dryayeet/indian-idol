@@ -61,6 +61,24 @@ to `openrouter` or `gemini` to force one.
 
 The model must support tool calls.
 
+## Modes
+
+The chat gives three levels of control over the tools. Change the mode with a
+slash command in the chat bar. This is the only way to change it.
+
+| Mode | Effect |
+|---|---|
+| `/manual` | Every tool call waits for your approval. |
+| `/afk` | Reads run freely. The three playlist tools wait for you. |
+| `/auto` | All tools run. Nothing waits. |
+
+`/mode` shows the current mode. `/help` lists the commands.
+The mode is `afk` when the chat starts.
+
+A tool that waits does not run. The agent stops before the tool, and shows you the
+call. Approve it, and the agent continues. Decline it, and the agent is told that
+you declined. It then chooses another action.
+
 ## Credentials
 
 The server reads three Spotify variables from a `.env` file.

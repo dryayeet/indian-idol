@@ -76,6 +76,66 @@ def _draw(parts) -> None:
             st.markdown(text)
 
 
+HELP = (
+    "**/manual** every tool call waits for you  \n"
+    "**/afk** reads run freely, playlist tools wait for you  \n"
+    "**/auto** everything runs, nothing waits  \n"
+    "**/mode** show the current mode  \n"
+    "**/help** this list"
+)
+
+
+def _command(text: str) -> None:
+    """Slash commands typed in the chat bar. The only way to change mode."""
+    word = text.strip().lstrip("/").split()[0].lower() if text.strip("/ ") else "help"
+    st.session_state.chat.append(("user", text))
+    if word in agent.MODES:
+        st.session_state.mode = word
+        reply = f"Mode is now **{word}** — {agent.MODES[word]}."
+    elif word == "mode":
+        reply = f"Mode is **{st.session_state.mode}** — {agent.MODES[st.session_state.mode]}."
+    elif word == "help":
+        reply = HELP
+    else:
+        reply = f"No such command `/{word}`.\n\n{HELP}"
+    st.session_state.chat.append(("assistant", [("text", reply)]))
+    st.rerun()
+
+
+def _continue(approve: bool, key: str) -> None:
+    """Answer the pending approval and let the turn finish."""
+    os.environ[agent.KEY_VAR] = key
+    parts: list[tuple[str, str]] = []
+    with st.chat_message("assistant"):
+        if not approve:
+            st.markdown("_declined_")
+            parts.append(("text", "_declined_"))
+        with st.spinner("continuing..."):
+            try:
+                st.session_state.pending = asyncio.run(
+                    agent.decide(
+                        approve,
+                        lambda kind, text: parts.append(
+                            ("text" if kind == "token" else kind, text)
+                        ),
+                        checkpointer=_memory(),
+                        thread_id=st.session_state.thread,
+                        mode=st.session_state.mode,
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001 - surface model and API failures
+                st.error(f"{type(exc).__name__}: {exc}")
+                return
+    merged: list[tuple[str, str]] = []
+    for kind, text in parts:  # rejoin streamed tokens for the history
+        if kind == "text" and merged and merged[-1][0] == "text":
+            merged[-1] = ("text", merged[-1][1] + text)
+        else:
+            merged.append((kind, text))
+    st.session_state.chat.append(("assistant", merged))
+    st.rerun()
+
+
 def _agent_panel() -> None:
     st.subheader("Chat")
     st.caption(
@@ -93,10 +153,15 @@ def _agent_panel() -> None:
     if "thread" not in st.session_state:
         st.session_state.thread = uuid.uuid4().hex
         st.session_state.chat = []
+        st.session_state.mode = "afk"
+        st.session_state.pending = None
 
-    if st.button("New conversation"):
+    left, right = st.columns([3, 1])
+    left.caption(f"mode **{st.session_state.mode}** — {agent.MODES[st.session_state.mode]}")
+    if right.button("New conversation"):
         st.session_state.thread = uuid.uuid4().hex
         st.session_state.chat = []
+        st.session_state.pending = None
         st.rerun()
 
     for role, parts in st.session_state.chat:
@@ -108,8 +173,24 @@ def _agent_panel() -> None:
             else:
                 st.markdown(parts)
 
-    question = st.chat_input("songs that feel like driving away from my hometown")
+    if pending := st.session_state.pending:
+        with st.chat_message("assistant"):
+            st.warning(f"waiting for you — mode `{st.session_state.mode}`")
+            for call in pending:
+                st.code(f"{call['name']}({call['args']})", language="python")
+            yes, no = st.columns(2)
+            approved = yes.button("Approve", type="primary")
+            declined = no.button("Decline")
+        if approved or declined:
+            _continue(approve=approved, key=key)
+            return
+
+    question = st.chat_input("a request, or /manual /afk /auto /mode")
     if not question:
+        return
+
+    if question.startswith("/"):
+        _command(question)
         return
     if not key:
         st.warning(f"A {agent.PROVIDER} key is needed to run the agent.")
@@ -144,12 +225,13 @@ def _agent_panel() -> None:
 
         with st.spinner("thinking, searching, deciding..."):
             try:
-                asyncio.run(
-                    agent.run(
+                st.session_state.pending = asyncio.run(
+                    agent.turn(
                         question,
                         show,
                         checkpointer=_memory(),
                         thread_id=st.session_state.thread,
+                        mode=st.session_state.mode,
                     )
                 )
             except Exception as exc:  # noqa: BLE001 - surface model and API failures
@@ -157,6 +239,8 @@ def _agent_panel() -> None:
                 return
         flush()
     st.session_state.chat.append(("assistant", parts))
+    if st.session_state.pending:
+        st.rerun()  # show the approval buttons
 
 
 tools = _tools()

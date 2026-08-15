@@ -31,6 +31,13 @@ Done section records what was actually finished.
 
 ## Quality
 
+- [ ] **Grow the slash commands.** The chat bar takes `/manual`, `/afk`, `/auto`,
+      `/mode`, and `/help`. Worth adding: `/new` for a fresh thread, `/model` to
+      switch model mid-conversation, `/tools` to list what the server exposes, and
+      the same commands in the CLI, which currently has none. Unknown commands
+      answer with the help text rather than reaching the model, so adding one is
+      a branch in `_command()` in streamlit_app.py.
+
 - [ ] **Reuse the MCP session across Streamlit messages.** One session now covers a
       turn, but each chat message still rebuilds the graph and pays the ~3.5s
       subprocess spawn. Sessions are bound to their event loop and Streamlit calls

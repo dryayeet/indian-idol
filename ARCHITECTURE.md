@@ -92,6 +92,12 @@ variable, so switching is an env edit, not a code change. `langchain_google_gena
 imported inside `_llm()` so OpenRouter users need not install it. Any model chosen
 must support tool calling.
 
+**Approval as an interrupt, not a wrapper around each tool.** Gating happens in the
+graph (`interrupt_before=["tools"]`), not inside the tool functions, so the pause
+survives a Streamlit rerun: state lives in the checkpointer and the graph is rebuilt
+on each script run. Wrapping the tools instead would have needed the UI round trip to
+happen inside a running coroutine, which Streamlit's execution model cannot do.
+
 **Refresh token rather than an interactive login.** The server is launched by an
 agent, not by a person, so it cannot open a browser. The refresh token is minted
 once by hand and exchanged for access tokens on demand, cached in memory until 60
@@ -140,6 +146,12 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-16** — Three approval modes (`manual`, `afk`, `auto`), toggled only by
+  slash command in the chat bar. Built on `interrupt_before=["tools"]` plus the
+  checkpointer: the graph parks before the tool node, `_drive()` auto-resumes calls
+  the mode permits and returns the rest for approval, and a decline writes a
+  `ToolMessage` so the model reacts instead of hanging. Verified that a gated call
+  leaves zero tool results in state, so nothing runs before approval.
 - **2026-08-16** — Added `bakeoff.py`: a mechanical scorer for model choice, run
   against the real MCP tools rather than a synthetic benchmark. Scoring is 5 points
   per case and a forbidden tool call (writing a playlist unasked) zeroes the case
