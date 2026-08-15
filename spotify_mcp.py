@@ -65,18 +65,22 @@ def _call(method: str, path: str, **kw) -> dict:
 
 
 def _track(t: dict) -> dict:
+    """Name, artist, link. Nothing else.
+
+    The uri and id used to ride along too, but they are the same identifier three
+    times: `_uri()` turns this url back into a uri when a playlist is built. Dropping
+    them cuts 41% off every track, and tracks are most of what the model resends.
+    """
     return {
         "name": t["name"],
         "artist": ", ".join(a["name"] for a in t["artists"]),
         # given, not left for the caller to build from the id, which invites made-up links
         "url": f"https://open.spotify.com/track/{t['id']}",
-        "uri": t["uri"],
-        "id": t["id"],
     }
 
 
 @app.tool()
-def recently_played(limit: int = 50) -> list[dict]:
+def recently_played(limit: int = 20) -> list[dict]:
     """Recently played tracks, newest first (max 50)."""
     items = _call("GET", "/me/player/recently-played", params={"limit": min(limit, 50)})["items"]
     return [_track(i["track"]) | {"played_at": i["played_at"]} for i in items]
@@ -145,7 +149,7 @@ def search_by_feel(
     valence: float = 0.5,
     energy: float = 0.5,
     acousticness: float = 0.5,
-    limit: int = 20,
+    limit: int = 10,
 ) -> list[dict]:
     """Find tracks matching a mood.
 
@@ -246,14 +250,14 @@ def _dedupe(tracks: list[dict]) -> list[dict]:
     """Recently played repeats the same song; lyrics only need fetching once."""
     seen, out = set(), []
     for t in tracks:
-        if t["id"] not in seen:
-            seen.add(t["id"])
+        if t["url"] not in seen:  # url, not id: _track no longer carries an id
+            seen.add(t["url"])
             out.append(t)
     return out
 
 
 @app.tool()
-def listening_lyrics(source: str = "recent", limit: int = 20, chars: int = 1200) -> dict:
+def listening_lyrics(source: str = "recent", limit: int = 12, chars: int = 800) -> dict:
     """Lyrics for what the user has been listening to, fetched in one call.
 
     source: "recent" for recently played, "top" for most played.
@@ -362,7 +366,7 @@ if __name__ == "__main__":
         assert _feel_query("campfire", 0.4, 0.6, 0.95) == "campfire acoustic"  # strongest axis
         assert _feel_query("leaving home", 0.5, 0.5, 0.5) == "leaving home"  # no "music" fallback
         track = _track({"name": "n", "artists": [{"name": "a"}], "uri": "spotify:track:ID", "id": "ID"})
-        assert track["url"] == "https://open.spotify.com/track/ID", track
+        assert track == {"name": "n", "artist": "a", "url": "https://open.spotify.com/track/ID"}, track
         assert _uri("1bMkimTb47umgNP6xCi4A1") == "spotify:track:1bMkimTb47umgNP6xCi4A1"
         assert _uri("spotify:track:abc") == "spotify:track:abc"
         assert _uri("https://open.spotify.com/track/xyz?si=1") == "spotify:track:xyz"
@@ -374,8 +378,8 @@ if __name__ == "__main__":
         score, line = _lyric_score(["leaving", "hometown"], "I am leaving\nleaving my hometown tonight")
         assert (score, line) == (1.0, "leaving my hometown tonight"), (score, line)
         assert _lyric_score(["leaving", "hometown"], "just leaving")[0] == 0.5  # partial
-        rows = [{"id": "a"}, {"id": "b"}, {"id": "a"}]
-        assert [t["id"] for t in _dedupe(rows)] == ["a", "b"]
+        rows = [{"url": "a"}, {"url": "b"}, {"url": "a"}]
+        assert [t["url"] for t in _dedupe(rows)] == ["a", "b"]
         assert _lyric_score(["leaving"], "no match here") == (0.0, "")  # honest empty
         _tok.update(value="cached", expires=time.time() + 3600)
         assert _token() == "cached"  # no network call when unexpired

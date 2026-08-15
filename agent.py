@@ -124,6 +124,38 @@ def _parts(message) -> list[tuple[str, str]]:
     return [("text", text.strip())] if text.strip() else []
 
 
+STUB_OVER = 400  # leave small tool results alone; the savings are not worth the churn
+
+
+def _shrink_old_tools(state: dict) -> dict:
+    """Send the model stubs in place of tool results from earlier turns.
+
+    Raw tool output dominates a thread: two searches left 96% of the characters as
+    JSON the model had already read and summarised. This replaces those bodies for
+    the model's eyes only. The stored history keeps them, so the UI is unaffected,
+    and the current turn's results are never touched.
+    """
+    messages = list(state["messages"])
+    current_turn = max(
+        (i for i, m in enumerate(messages) if m.type == "human"), default=len(messages)
+    )
+    trimmed = []
+    for i, m in enumerate(messages):
+        body = str(m.content)
+        if m.type == "tool" and i < current_turn and len(body) > STUB_OVER:
+            trimmed.append(
+                ToolMessage(
+                    content="[earlier results, already summarised in the reply below]",
+                    tool_call_id=m.tool_call_id,
+                    name=m.name,
+                    id=m.id,
+                )
+            )
+        else:
+            trimmed.append(m)
+    return {"llm_input_messages": trimmed}
+
+
 PLAYLIST_TOOLS = {"my_playlists", "playlist_tracks", "create_playlist"}
 MODES = {
     "manual": "every tool call waits for you",
@@ -161,6 +193,7 @@ async def build(
             tools,
             prompt=SYSTEM,
             checkpointer=checkpointer,
+            pre_model_hook=_shrink_old_tools,
             # pause before the tool node so a mode can hold calls for approval
             interrupt_before=["tools"] if gated else None,
         )
@@ -296,6 +329,24 @@ async def _selfcheck() -> None:
     assert feel.args_schema.get("required") == ["description"], feel.args_schema
     assert "matching a mood" in feel.description, feel.description
     assert PROVIDER in ("openrouter", "gemini"), f"unknown LLM_PROVIDER {PROVIDER!r}"
+
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    big = "x" * 3000
+    sent = _shrink_old_tools(
+        {
+            "messages": [
+                HumanMessage("older turn", id="h1"),
+                ToolMessage(big, tool_call_id="c1", name="search_by_feel", id="t1"),
+                AIMessage("the summary that replaces it", id="a1"),
+                HumanMessage("current turn", id="h2"),
+                ToolMessage(big, tool_call_id="c2", name="search_by_feel", id="t2"),
+            ]
+        }
+    )["llm_input_messages"]
+    assert len(str(sent[1].content)) < 100, "old tool result should be stubbed"
+    assert len(str(sent[4].content)) == 3000, "current turn's result must survive"
+    assert "summary" in str(sent[2].content), "the reply that summarised it must stay"
     how = "set in .env" if PROVIDER_EXPLICIT else "auto-picked from the keys present"
     key = "key present" if os.environ.get(KEY_VAR) else f"NO {KEY_VAR}"
     print(f"ok — {len(names)} tools over MCP stdio")

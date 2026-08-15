@@ -147,6 +147,15 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-16** — Cut what the conversation carries, in two steps. (1) `_track`
+  now returns name, artist, url only: the uri and id were the same identifier three
+  times, and `_uri()` reconstructs a uri from the url when a playlist is built.
+  Measured 23-30% off every track-bearing tool, plus lower defaults
+  (`recently_played` 50→20, `search_by_feel` 20→10, `listening_lyrics` 20 tracks
+  ×1200 chars → 12×800). (2) A `pre_model_hook` stubs tool results from earlier
+  turns before the model sees them, keeping the assistant's summary of each. Stored
+  history is untouched, so the UI still shows everything. A third turn sent 2,523
+  chars instead of 4,507, and a "name one more like it" follow-up still resolved.
 - **2026-08-16** — Bake-off run on OpenRouter, $0.15 for five models over four cases.
   Four tied at 20/20 (gpt-5.4-mini, qwen3.7-flash, qwen3.7-max, qwen3.7-plus);
   ling-3.0-flash took 19/20. **No model change**: the score tied, and the incumbent

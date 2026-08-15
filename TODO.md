@@ -31,6 +31,11 @@ Done section records what was actually finished.
 
 ## Quality
 
+- [ ] **Give the CLI a memory, or say plainly that it has none.** The chat now
+      trims its history sensibly, but `python agent.py "..."` still passes no
+      checkpointer, so every run starts blank. Either wire a thread id flag or
+      document it in the CLI help.
+
 - [ ] **Grow the slash commands.** The chat bar takes `/manual`, `/afk`, `/auto`,
       `/mode`, and `/help`. Worth adding: `/new` for a fresh thread, `/model` to
       switch model mid-conversation, `/tools` to list what the server exposes, and
