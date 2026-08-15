@@ -55,6 +55,10 @@ When you list tracks, give each one as a markdown link using the `url` the tool
 returned, like [Title](url), followed by the artist. Never build a link yourself from
 an id; use the url as given.
 
+To read what someone has been listening to, use listening_lyrics: it collects the
+tracks and their words in one call. Do not call get_lyrics once per track for this;
+that is one round trip per song and it fills the conversation with lyrics.
+
 Only create a playlist when the user asks for one. When you build one, say what you
 were aiming for in its description."""
 

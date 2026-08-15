@@ -1,7 +1,7 @@
 # Spotify MCP Server
 
 This is the Spotify tool server for the autonomous Spotify agent.
-It is an MCP server. It gives an agent eight tools for the Spotify Web API and LRCLIB.
+It is an MCP server. It gives an agent nine tools for the Spotify Web API and LRCLIB.
 For the intent, read [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md).
 For what is built and why, read [ARCHITECTURE.md](ARCHITECTURE.md).
 For what is still owed, read [TODO.md](TODO.md).
@@ -14,6 +14,7 @@ For what is still owed, read [TODO.md](TODO.md).
 | `top_tracks(limit, time_range)` | Get the tracks that you played most. |
 | `get_lyrics(track, artist)` | Get the lyrics from LRCLIB. This tool does not use Spotify. |
 | `search_by_feel(description, valence, energy, acousticness, limit)` | Find tracks. The description does the searching. |
+| `listening_lyrics(source, limit, chars)` | Get the lyrics of recent or top tracks in one call. |
 | `search_by_lyrics(phrase, search_terms, candidates, limit)` | Find tracks whose lyrics match. Slower. Can return nothing. |
 | `my_playlists(limit)` | List the playlists the user owns or follows. |
 | `playlist_tracks(playlist, limit)` | Read the tracks in a playlist. |

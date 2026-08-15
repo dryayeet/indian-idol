@@ -242,6 +242,57 @@ def search_by_lyrics(
     return scored[:limit]
 
 
+def _dedupe(tracks: list[dict]) -> list[dict]:
+    """Recently played repeats the same song; lyrics only need fetching once."""
+    seen, out = set(), []
+    for t in tracks:
+        if t["id"] not in seen:
+            seen.add(t["id"])
+            out.append(t)
+    return out
+
+
+@app.tool()
+def listening_lyrics(source: str = "recent", limit: int = 20, chars: int = 1200) -> dict:
+    """Lyrics for what the user has been listening to, fetched in one call.
+
+    source: "recent" for recently played, "top" for most played.
+    limit: how many distinct tracks. Repeats of the same song are collapsed.
+    chars: truncate each lyric to this many characters, 0 for the whole thing.
+        Twenty full lyrics is a large amount of context; the default keeps roughly
+        the opening verse and chorus, which is enough to read the mood.
+
+    Returns {"tracks": [...], "missing": [...]}, where missing names the tracks
+    LRCLIB had no lyrics for, usually instrumentals and very new releases.
+
+    Use this instead of calling get_lyrics once per track.
+    """
+    if source not in ("recent", "top"):
+        raise ValueError("source must be 'recent' or 'top'")
+    found = (
+        recently_played(min(limit * 2, 50)) if source == "recent" else top_tracks(limit)
+    )
+    picked = _dedupe(found)[:limit]
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        lyrics = list(pool.map(_lyrics_for, picked))
+
+    tracks, missing = [], []
+    for track, words in zip(picked, lyrics):
+        if not words:
+            missing.append(f"{track['name']} - {track['artist']}")
+            continue
+        tracks.append(
+            {
+                "name": track["name"],
+                "artist": track["artist"],
+                "url": track["url"],
+                "lyrics": words[:chars] if chars else words,
+            }
+        )
+    return {"tracks": tracks, "missing": missing}
+
+
 def _playlist_id(item: str) -> str:
     """Take a playlist id, URI, or open.spotify.com link and return the id."""
     item = item.strip().rstrip("/")
@@ -323,6 +374,8 @@ if __name__ == "__main__":
         score, line = _lyric_score(["leaving", "hometown"], "I am leaving\nleaving my hometown tonight")
         assert (score, line) == (1.0, "leaving my hometown tonight"), (score, line)
         assert _lyric_score(["leaving", "hometown"], "just leaving")[0] == 0.5  # partial
+        rows = [{"id": "a"}, {"id": "b"}, {"id": "a"}]
+        assert [t["id"] for t in _dedupe(rows)] == ["a", "b"]
         assert _lyric_score(["leaving"], "no match here") == (0.0, "")  # honest empty
         _tok.update(value="cached", expires=time.time() + 3600)
         assert _token() == "cached"  # no network call when unexpired

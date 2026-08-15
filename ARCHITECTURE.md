@@ -22,7 +22,7 @@ actually built, why it is built that way, and what the environment forces.
         │  recently_played   top_tracks   get_lyrics     │
         │  search_by_feel    search_by_lyrics            │
         │  my_playlists      playlist_tracks             │
-        │  create_playlist                               │
+        │  listening_lyrics  create_playlist             │
         └──────────┬─────────────────────────┬──────────┘
                    │ OAuth refresh token     │ no auth
                    ▼                         ▼
@@ -41,7 +41,7 @@ MCP client, not just this agent.
 
 | File | Role | Entry point |
 |---|---|---|
-| [spotify_mcp.py](spotify_mcp.py) | MCP server. Five tools, token refresh, HTTP retries. | `python spotify_mcp.py` (stdio) |
+| [spotify_mcp.py](spotify_mcp.py) | MCP server. Nine tools, token refresh, HTTP retries. | `python spotify_mcp.py` (stdio) |
 | [agent.py](agent.py) | LangGraph `create_react_agent`. Launches the server over stdio, reads its tool list, loops model ↔ tools. | `python agent.py "..."` |
 | [run_tool.py](run_tool.py) | Manual tool runner. Lists tools, prompts for fields, prints results. | `python run_tool.py` |
 | [streamlit_app.py](streamlit_app.py) | Web UI. Agent mode runs `agent.collect()`; Tools mode generates widgets from each tool's `inputSchema`. | `streamlit run streamlit_app.py` |
@@ -53,10 +53,11 @@ edit. That is the main reason the schemas are read at runtime rather than hardco
 ## Working data flow: affective retrieval
 
 1. User gives `agent.py` a request phrased as a feeling, not a genre.
-2. The model maps it onto `search_by_feel`'s coordinates: `valence`, `energy`,
-   `acousticness`, each 0 to 1, plus free text in `extra_query`.
-3. `search_by_feel` turns those numbers into search keywords and calls
-   `GET /v1/search`.
+2. The model writes a `description` of two to five title-like words, plus optional
+   `valence`, `energy`, and `acousticness` from 0 to 1.
+3. `search_by_feel` appends one word for the strongest axis and calls
+   `GET /v1/search`, paging in tens. For requests about what a song *says*,
+   `search_by_lyrics` reranks those candidates on their actual lyrics instead.
 4. The model reads the tracks and either reports them or calls `create_playlist`.
 
 The other workflow in the abstract (weekly trait drift) is not built. See Gaps.
@@ -68,7 +69,7 @@ The other workflow in the abstract (weekly trait drift) is not built. See Gaps.
 premise is that the tools are reusable by any MCP client. The cost is a subprocess
 per run and a version pin (below).
 
-**`httpx` directly, not `spotipy`.** The five calls needed are one line each. A
+**`httpx` directly, not `spotipy`.** Each call needed is one line. A
 client library would add a dependency and its own auth model for no gain.
 
 **Keyword search instead of audio-feature targets.** Spotify deprecated
@@ -82,7 +83,7 @@ and no auth.
 
 **OpenRouter as the LLM provider.** One key covers many models, and the model is
 swappable through `OPENROUTER_MODEL` without touching code. Default is
-`openai/gpt-4o-mini`. Any model chosen must support tool calling.
+`openai/gpt-5.4-mini`. Any model chosen must support tool calling.
 
 **Refresh token rather than an interactive login.** The server is launched by an
 agent, not by a person, so it cannot open a browser. The refresh token is minted
@@ -115,13 +116,10 @@ with everything else still owed, is [TODO.md](TODO.md).
 1. **No psych/emotion MCP server.** `get_big_five()` and `get_emotion_labels()` do
    not exist, so no trait or emotion inference happens anywhere. The weekly drift
    workflow is blocked entirely on this.
-2. **No memory.** Each `agent.py` run is a fresh conversation. Tracking a profile
-   across weeks needs a checkpointer for the thread and a separate store for the
-   trait trajectory.
-3. **`get_lyrics` is single-track.** Profiling a week of listening means one model
-   round trip per track. A batch tool is needed before lyric-based inference is
-   practical on free-tier limits.
-4. **No feedback signal.** Nothing measures whether a playlist moved anything, so
+2. **Memory does not outlive the process.** The Streamlit chat remembers a
+   conversation through an `InMemorySaver`, but a restart loses it and the CLI is
+   stateless. A trait trajectory across weeks needs durable storage.
+3. **No feedback signal.** Nothing measures whether a playlist moved anything, so
    the loop in the abstract is open, not closed.
 
 ## Known risks
@@ -135,6 +133,10 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-15** — Added `listening_lyrics`, which collects recent or top tracks
+  and their lyrics in one call, deduplicated and concurrently fetched. It removes
+  the round-trip-per-song cost that blocked lyric-based profiling, and caps each
+  lyric so a week of listening does not flood the context.
 - **2026-08-15** — Added `search_by_lyrics`: Spotify supplies candidates, LRCLIB
   supplies the lyrics, ranking happens locally on term coverage. It is the first
   path that matches what a song says rather than what it is called, and the first
