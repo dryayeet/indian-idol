@@ -29,6 +29,7 @@ For what is still owed, read [TODO.md](TODO.md).
 | `spotify_mcp.py` | The MCP server. Start it with `python spotify_mcp.py`. |
 | `agent.py` | The LangGraph agent. It calls the tools through MCP. |
 | `get_token.py` | Mints the refresh token. Run it again when the scopes change. |
+| `bakeoff.py` | Scores models on the agent's job. Run `python bakeoff.py`. |
 | `run_tool.py` | A command-line client. Use it to call one tool. |
 | `streamlit_app.py` | A web interface. It shows all the tools as forms. |
 | `requirements.txt` | The Python packages. |
@@ -49,7 +50,9 @@ python agent.py "songs that feel like driving away from my hometown"
 
 The agent translates the request into emotion values, then calls the tools.
 
-There are two providers. Choose one with `LLM_PROVIDER` in the `.env` file:
+There are two providers. Leave `LLM_PROVIDER` blank and the agent picks one: it
+uses OpenRouter when that key is set, and Gemini when it is not. Set the variable
+to `openrouter` or `gemini` to force one.
 
 | `LLM_PROVIDER` | Key | Model variable | Default |
 |---|---|---|---|
@@ -101,6 +104,7 @@ Each file has an internal test. Give the `--selfcheck` argument:
 python spotify_mcp.py --selfcheck
 python run_tool.py --selfcheck
 python agent.py --selfcheck
+python bakeoff.py --selfcheck
 ```
 
 The agent test lists the tools through MCP. It does not call the language model.

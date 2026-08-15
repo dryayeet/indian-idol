@@ -30,12 +30,26 @@ from langgraph.prebuilt import create_react_agent
 HERE = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(HERE, ".env"))
 
-PROVIDER = os.environ.get("LLM_PROVIDER", "gemini").strip().lower()
+def _pick_provider() -> tuple[str, bool]:
+    """Which LLM to use. LLM_PROVIDER wins; otherwise whichever key is present.
+
+    OpenRouter is preferred when both keys exist. Returns (provider, was_explicit).
+    """
+    if chosen := os.environ.get("LLM_PROVIDER", "").strip().lower():
+        return chosen, True
+    if os.environ.get("OPENROUTER_API_KEY"):
+        return "openrouter", False
+    if os.environ.get("GEMINI_API_KEY"):
+        return "gemini", False
+    return "openrouter", False  # nothing set; _llm() names the missing key
+
+
+PROVIDER, PROVIDER_EXPLICIT = _pick_provider()
 if PROVIDER == "gemini":
-    MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+    MODEL = os.environ.get("GEMINI_MODEL") or "gemini-3.6-flash"
     KEY_VAR = "GEMINI_API_KEY"
 else:
-    MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-5.4-mini")
+    MODEL = os.environ.get("OPENROUTER_MODEL") or "openai/gpt-5.4-mini"
     KEY_VAR = "OPENROUTER_API_KEY"
 SERVERS = {
     "spotify": {
@@ -76,17 +90,21 @@ Only create a playlist when the user asks for one. When you build one, say what 
 were aiming for in its description."""
 
 
-def _llm():
-    key = os.environ.get(KEY_VAR)
+def _llm(model: str | None = None, provider: str | None = None):
+    """The chat model. Overrides let one process compare several, as bakeoff.py does."""
+    provider = provider or PROVIDER
+    key_var = "GEMINI_API_KEY" if provider == "gemini" else "OPENROUTER_API_KEY"
+    key = os.environ.get(key_var)
     if not key:
-        raise SystemExit(f"missing {KEY_VAR} — copy .env.example to .env and fill it in")
-    if PROVIDER == "gemini":
+        raise SystemExit(f"missing {key_var} — copy .env.example to .env and fill it in")
+    if provider == "gemini":
         # imported here so OpenRouter users do not need the Google package installed
         from langchain_google_genai import ChatGoogleGenerativeAI
 
-        return ChatGoogleGenerativeAI(model=MODEL, google_api_key=key, max_tokens=4000)
+        model = model or (MODEL if PROVIDER == "gemini" else "gemini-3.6-flash")
+        return ChatGoogleGenerativeAI(model=model, google_api_key=key, max_tokens=4000)
     return ChatOpenAI(
-        model=MODEL,
+        model=model or (MODEL if PROVIDER == "openrouter" else "openai/gpt-5.4-mini"),
         api_key=key,
         base_url="https://openrouter.ai/api/v1",
         max_tokens=4000,
@@ -106,7 +124,7 @@ def _parts(message) -> list[tuple[str, str]]:
 
 
 @asynccontextmanager
-async def build(checkpointer=None):
+async def build(checkpointer=None, model: str | None = None, provider: str | None = None):
     """Compile the agent over ONE MCP session, held open for the whole turn.
 
     Without the session, every tool call opens its own stdio connection: a new
@@ -115,7 +133,9 @@ async def build(checkpointer=None):
     """
     async with MultiServerMCPClient(SERVERS).session("spotify") as session:
         tools = await load_mcp_tools(session)
-        yield create_react_agent(_llm(), tools, prompt=SYSTEM, checkpointer=checkpointer)
+        yield create_react_agent(
+            _llm(model, provider), tools, prompt=SYSTEM, checkpointer=checkpointer
+        )
 
 
 def _token(chunk) -> str:
@@ -128,7 +148,14 @@ def _token(chunk) -> str:
     return text or ""
 
 
-async def run(question: str, on_part, checkpointer=None, thread_id: str | None = None):
+async def run(
+    question: str,
+    on_part,
+    checkpointer=None,
+    thread_id: str | None = None,
+    model: str | None = None,
+    provider: str | None = None,
+):
     """Run one turn, calling on_part(kind, text) as output arrives.
 
     kind is "tool" for a complete tool call, or "token" for a piece of the reply as
@@ -136,7 +163,7 @@ async def run(question: str, on_part, checkpointer=None, thread_id: str | None =
     thread are in scope, so follow-ups like "make that a playlist" resolve.
     """
     config = {"configurable": {"thread_id": thread_id}} if checkpointer else None
-    async with build(checkpointer) as graph:
+    async with build(checkpointer, model, provider) as graph:
         async for mode, payload in graph.astream(
             {"messages": [("user", question)]},
             config,
@@ -183,7 +210,10 @@ async def _selfcheck() -> None:
     assert feel.args_schema.get("required") == ["description"], feel.args_schema
     assert "matching a mood" in feel.description, feel.description
     assert PROVIDER in ("openrouter", "gemini"), f"unknown LLM_PROVIDER {PROVIDER!r}"
-    print(f"ok — {len(names)} tools over MCP stdio, provider {PROVIDER}, model {MODEL}")
+    how = "set in .env" if PROVIDER_EXPLICIT else "auto-picked from the keys present"
+    key = "key present" if os.environ.get(KEY_VAR) else f"NO {KEY_VAR}"
+    print(f"ok — {len(names)} tools over MCP stdio")
+    print(f"     provider {PROVIDER} ({how}), model {MODEL}, {key}")
 
 
 if __name__ == "__main__":

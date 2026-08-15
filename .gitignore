@@ -6,3 +6,4 @@ venv/
 graphify-out/
 .pytest_cache/
 spot/
+bakeoff_results.json

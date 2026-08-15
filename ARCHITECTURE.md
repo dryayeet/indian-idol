@@ -43,6 +43,7 @@ stays usable by any MCP client, not just this agent.
 |---|---|---|
 | [spotify_mcp.py](spotify_mcp.py) | MCP server. Nine tools, token refresh, HTTP retries. | `python spotify_mcp.py` (stdio) |
 | [agent.py](agent.py) | LangGraph `create_react_agent`. Launches the server over stdio, reads its tool list, loops model ↔ tools. | `python agent.py "..."` |
+| [bakeoff.py](bakeoff.py) | Scores models on the four cases that matter here: right tool, no forbidden writes, no repeated calls, usable answer. | `python bakeoff.py` |
 | [run_tool.py](run_tool.py) | Manual tool runner. Lists tools, prompts for fields, prints results. | `python run_tool.py` |
 | [streamlit_app.py](streamlit_app.py) | Web UI. Agent mode streams `agent.run()` into a chat; Tools mode generates widgets from each tool's `inputSchema`. | `streamlit run streamlit_app.py` |
 | [.env.example](.env.example) | The five environment variables. | copy to `.env` |
@@ -82,7 +83,9 @@ gap between the abstract and the implementation.
 **LRCLIB for lyrics.** Spotify has no public lyrics endpoint. LRCLIB needs no key
 and no auth.
 
-**Two LLM providers, switched by `LLM_PROVIDER`.** OpenRouter (default) reaches many
+**Two LLM providers, auto-selected.** `LLM_PROVIDER` forces one; left blank, the
+agent uses OpenRouter if that key is present and Gemini otherwise, so removing a key
+is enough to switch and neither provider being reachable is never silent. OpenRouter (default) reaches many
 models behind one key; Gemini is the second, added because Google's free tier keeps
 the agent running when OpenRouter credits are gone. Each has its own key and model
 variable, so switching is an env edit, not a code change. `langchain_google_genai` is
@@ -137,6 +140,15 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-16** — Added `bakeoff.py`: a mechanical scorer for model choice, run
+  against the real MCP tools rather than a synthetic benchmark. Scoring is 5 points
+  per case and a forbidden tool call (writing a playlist unasked) zeroes the case
+  outright. `agent.run/build/_llm` now take `model` and `provider` overrides so one
+  process can compare several.
+- **2026-08-16** — Provider selection is automatic when `LLM_PROVIDER` is blank:
+  OpenRouter if its key is set, else Gemini. Prompted by hitting both a credit wall
+  on one provider and a 20-requests-per-day-per-model free-tier cap on the other;
+  swapping is now a key edit rather than a config edit.
 - **2026-08-16** — `agent.build()` is now an async context manager holding ONE MCP
   session for the whole turn. Every tool call previously opened its own stdio
   connection: measured 3.6-4.0s per call against 0.39s for the same work called
