@@ -1,7 +1,7 @@
 # Spotify MCP Server
 
 This is the Spotify tool server for the autonomous Spotify agent.
-It is an MCP server. It gives an agent five tools for the Spotify Web API.
+It is an MCP server. It gives an agent seven tools for the Spotify Web API.
 For the intent, read [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md).
 For what is built and why, read [ARCHITECTURE.md](ARCHITECTURE.md).
 For what is still owed, read [TODO.md](TODO.md).
@@ -13,7 +13,9 @@ For what is still owed, read [TODO.md](TODO.md).
 | `recently_played(limit)` | Get the tracks that you played last. The maximum is 50. |
 | `top_tracks(limit, time_range)` | Get the tracks that you played most. |
 | `get_lyrics(track, artist)` | Get the lyrics from LRCLIB. This tool does not use Spotify. |
-| `search_by_feel(valence, energy, acousticness, extra_query, limit)` | Find tracks with mood values from 0 to 1. |
+| `search_by_feel(description, valence, energy, acousticness, limit)` | Find tracks. The description does the searching. |
+| `my_playlists(limit)` | List the playlists the user owns or follows. |
+| `playlist_tracks(playlist, limit)` | Read the tracks in a playlist. |
 | `create_playlist(name, track_uris, description)` | Make a private playlist and add the tracks. |
 
 `create_playlist` accepts a track URI, a Spotify link, or an ID.
@@ -24,6 +26,7 @@ For what is still owed, read [TODO.md](TODO.md).
 |---|---|
 | `spotify_mcp.py` | The MCP server. Start it with `python spotify_mcp.py`. |
 | `agent.py` | The LangGraph agent. It calls the tools through MCP. |
+| `get_token.py` | Mints the refresh token. Run it again when the scopes change. |
 | `run_tool.py` | A command-line client. Use it to call one tool. |
 | `streamlit_app.py` | A web interface. It shows all the tools as forms. |
 | `requirements.txt` | The Python packages. |
@@ -56,7 +59,8 @@ Use `.env.example` as the pattern.
 3. Set the redirect URI to `http://127.0.0.1:8888/callback`.
    Do not use `localhost`. Spotify refuses it.
 4. Get a refresh token with these scopes:
-   `user-read-recently-played`, `user-top-read`, and `playlist-modify-private`.
+   `user-read-recently-played`, `user-top-read`, `playlist-modify-private`,
+   and `playlist-read-private`. Run `python get_token.py` to do this.
 5. Put the three values in the `.env` file.
 
 Keep the `.env` file out of the repository. The `.gitignore` file does this.
@@ -99,11 +103,14 @@ The agent test lists the tools through MCP. It does not call the language model.
   New apps cannot use `/v1/audio-features` or `/v1/recommendations`.
   Thus `search_by_feel` uses keywords, not audio-feature targets.
 - Spotify moved two endpoints in February 2026.
-  The server uses `POST /me/playlists` and `POST /playlists/{id}/items`.
+  The server uses `POST /me/playlists` and the `/items` path for playlist tracks.
 - Spotify has no lyrics endpoint. The lyrics come from LRCLIB.
 - The `mcp` package must stay below version 2.0.
   `langchain-mcp-adapters` does not support version 2.0 yet.
-- The agent has no memory. Each run starts a new conversation.
+- The agent remembers a conversation only while the web interface runs.
+  A restart loses the history.
+- Reading the tracks of any playlist needs the `playlist-read-private` scope.
+  This is true even for public playlists.
 - The connection to `accounts.spotify.com` can fail.
   The HTTP client then tries again three times.
 

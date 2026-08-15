@@ -35,6 +35,12 @@ Done section records what was actually finished.
 - [ ] **Stream tokens, not just steps.** Steps now appear as they happen, but each
       reply still lands as one block because `stream_mode="values"` emits per node.
       Token-level streaming needs `stream_mode="messages"`.
+- [ ] **Search by lyrics via fetch-and-rerank.** No lyric-text search exists:
+      Spotify matches names only, and LRCLIB's search returns zero hits for a
+      verbatim lyric line (both verified). The buildable version is to search
+      Spotify for candidates, pull each one's lyrics from LRCLIB, then rank by how
+      well the lyrics match the request. Costs one lyric fetch per candidate, so it
+      wants the batch lyrics tool first.
 - [ ] **Detect empty search results.** Spotify's search never returns nothing: a
       meaningless query still yields arbitrary tracks (verified with
       `q="qwertypoiu zxcvbnm asdfgh"`). The agent cannot tell a good match from

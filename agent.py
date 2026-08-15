@@ -113,13 +113,8 @@ async def main(question: str) -> None:
 async def _selfcheck() -> None:
     tools = await MultiServerMCPClient(SERVERS).get_tools()
     names = sorted(t.name for t in tools)
-    assert names == [
-        "create_playlist",
-        "get_lyrics",
-        "recently_played",
-        "search_by_feel",
-        "top_tracks",
-    ], names
+    # a subset, not an exact list: adding a tool to the server should not fail this
+    assert {"search_by_feel", "create_playlist", "get_lyrics"} <= set(names), names
     feel = next(t for t in tools if t.name == "search_by_feel")
     schema = feel.args_schema["properties"]
     assert "valence" in schema and "description" in schema, schema

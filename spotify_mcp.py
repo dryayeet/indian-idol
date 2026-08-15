@@ -3,6 +3,7 @@
 Env: SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REFRESH_TOKEN
 Scopes the refresh token needs:
     user-read-recently-played user-top-read playlist-modify-private
+    playlist-read-private   (required to read any playlist's contents, even public ones)
 
 Run:  python spotify_mcp.py           (stdio)
 Check: python spotify_mcp.py --selfcheck
@@ -149,6 +150,41 @@ def search_by_feel(
     return [_track(t) for t in _call("GET", "/search", params=params)["tracks"]["items"]]
 
 
+def _playlist_id(item: str) -> str:
+    """Take a playlist id, URI, or open.spotify.com link and return the id."""
+    item = item.strip().rstrip("/")
+    if item.startswith("spotify:"):
+        return item.rsplit(":", 1)[-1]
+    if "open.spotify.com" in item:
+        return item.rsplit("/", 1)[-1].split("?")[0]
+    return item
+
+
+@app.tool()
+def my_playlists(limit: int = 50) -> list[dict]:
+    """List the playlists the user owns or follows, with their ids and track counts."""
+    items = _call("GET", "/me/playlists", params={"limit": min(limit, 50)})["items"]
+    return [
+        {
+            "name": p["name"],
+            "id": p["id"],
+            "tracks": (p.get("tracks") or {}).get("total"),
+            "owner": (p.get("owner") or {}).get("display_name"),
+            "url": p["external_urls"]["spotify"],
+        }
+        for p in items
+        if p
+    ]
+
+
+@app.tool()
+def playlist_tracks(playlist: str, limit: int = 50) -> list[dict]:
+    """Read the tracks in a playlist. Accepts a playlist id, URI, or link."""
+    path = f"/playlists/{_playlist_id(playlist)}/items"
+    items = _call("GET", path, params={"limit": min(limit, 50)})["items"]
+    return [_track(i["track"]) for i in items if i.get("track")]
+
+
 def _uri(item: str) -> str:
     """Take a track URI, an open.spotify.com link, or a bare id, and return a URI."""
     item = item.strip()
@@ -187,6 +223,9 @@ if __name__ == "__main__":
         assert _uri("1bMkimTb47umgNP6xCi4A1") == "spotify:track:1bMkimTb47umgNP6xCi4A1"
         assert _uri("spotify:track:abc") == "spotify:track:abc"
         assert _uri("https://open.spotify.com/track/xyz?si=1") == "spotify:track:xyz"
+        assert _playlist_id("spotify:playlist:PID") == "PID"
+        assert _playlist_id("https://open.spotify.com/playlist/PID?si=2") == "PID"
+        assert _playlist_id(" PID ") == "PID"
         _tok.update(value="cached", expires=time.time() + 3600)
         assert _token() == "cached"  # no network call when unexpired
         print("ok")
