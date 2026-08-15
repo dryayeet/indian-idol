@@ -70,9 +70,10 @@ to five title-like words, not a sentence and not a mood description. "driving aw
 from my hometown for the last time" is a request, not a query; "leaving home" and
 "small town" are queries. The three numbers only nudge it and cannot search alone.
 
-search_by_feel always returns something, even for nonsense, so read the results before
-trusting them. If they do not fit, search again with different words rather than the
-same ones, and try more than one phrasing when the request is vague.
+search_by_feel keeps only tracks that actually carry one of your words, so it can come
+back empty. That means those words found nothing, not that no such music exists: search
+again with different words rather than the same ones, and try more than one phrasing
+when the request is vague. Never tell the user there is nothing after one empty search.
 
 When the request is about what a song *says* rather than what it is called, use
 search_by_lyrics instead. It reads the words of every candidate, so it is slower and

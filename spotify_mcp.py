@@ -54,14 +54,30 @@ def _token() -> str:
     return _tok["value"]
 
 
+RATE_LIMIT_TRIES = 3
+RATE_LIMIT_MAX_WAIT = 30  # a longer Retry-After means a long ban; fail instead of hanging
+
+
 def _call(method: str, path: str, **kw) -> dict:
-    r = _http.request(method, API + path, headers={"Authorization": f"Bearer {_token()}"}, **kw)
-    if r.status_code == 429:
-        raise RuntimeError(f"rate limited, retry after {r.headers.get('Retry-After', '?')}s")
-    if r.status_code >= 400:
-        # Spotify puts the actual reason in the body; raise_for_status alone hides it
-        raise RuntimeError(f"{method} {path} -> {r.status_code}: {r.text[:300]}")
-    return r.json() if r.content else {}
+    for attempt in range(RATE_LIMIT_TRIES):
+        r = _http.request(
+            method, API + path, headers={"Authorization": f"Bearer {_token()}"}, **kw
+        )
+        if r.status_code == 429:
+            wait = float(r.headers.get("Retry-After", 1))
+            last = attempt == RATE_LIMIT_TRIES - 1
+            if last or wait > RATE_LIMIT_MAX_WAIT:
+                raise RuntimeError(
+                    f"rate limited on {path}, Spotify asked for {wait:g}s"
+                    + ("" if last else " which is longer than we wait")
+                )
+            time.sleep(wait)
+            continue
+        if r.status_code >= 400:
+            # Spotify puts the actual reason in the body; raise_for_status alone hides it
+            raise RuntimeError(f"{method} {path} -> {r.status_code}: {r.text[:300]}")
+        return r.json() if r.content else {}
+    raise RuntimeError(f"rate limited on {path} after {RATE_LIMIT_TRIES} tries")
 
 
 def _track(t: dict) -> dict:
@@ -125,6 +141,19 @@ def _search_tracks(q: str, want: int) -> list[dict]:
     return out[:want]
 
 
+def _relevant(track: dict, terms: list[str]) -> bool:
+    """Whether the track has anything to do with the query.
+
+    Spotify's search never returns nothing: an unmatched query still yields
+    arbitrary tracks, which the agent would then present as an answer. Requiring a
+    query word in the title or artist turns that into an honest empty result. The
+    first four characters are compared, not the whole word, so "driving" still
+    matches "drivers" the way Spotify's own fuzzy matching intends.
+    """
+    hay = f"{track['name']} {track['artist']}".lower()
+    return any(term[:4] in hay for term in terms)
+
+
 def _feel_query(description: str, valence: float, energy: float, acousticness: float) -> str:
     """The description carries the search; the strongest mood axis adds one word.
 
@@ -161,15 +190,19 @@ def search_by_feel(
     valence: 0 sad to 1 happy. energy: 0 calm to 1 intense.
     acousticness: 0 produced to 1 acoustic. Leave one at 0.5 if it does not matter.
 
-    The search never returns nothing: an unmatched query still yields arbitrary
-    tracks. Judge whether the results actually fit before presenting them.
+    Results are filtered to tracks whose title or artist actually carries a word
+    from the description, because Spotify answers even a nonsense query with
+    arbitrary tracks. An empty list therefore means nothing matched: try different
+    words rather than presenting nothing.
     """
     # ponytail: keyword search, not /v1/recommendations + target_valence — that endpoint and
     # /v1/audio-features were deprecated for new apps on 2024-11-27 and return 403. Swap back
     # to real feature targeting only if this app gets extended-mode access.
     if not description.strip():
         raise ValueError("description is required — say what the music should feel like")
-    return _search_tracks(_feel_query(description, valence, energy, acousticness), limit)
+    found = _search_tracks(_feel_query(description, valence, energy, acousticness), limit)
+    terms = _terms(description)
+    return [t for t in found if _relevant(t, terms)] if terms else found
 
 
 _STOP = {
@@ -374,6 +407,33 @@ if __name__ == "__main__":
         assert _playlist_id("https://open.spotify.com/playlist/PID?si=2") == "PID"
         assert _playlist_id(" PID ") == "PID"
         assert _terms("Songs about leaving my hometown") == ["leaving", "hometown"]
+        keep = {"name": "Leaving Home", "artist": "Indian Ocean"}
+        junk = {"name": "Dame Tu Cosita", "artist": "El Chombo"}
+        assert _relevant(keep, ["leaving", "home"]) and not _relevant(junk, ["leaving"])
+        # four-character prefix, so Spotify's own fuzzy hits survive the filter
+        assert _relevant({"name": "drivers license", "artist": "x"}, ["driving"])
+
+        # 429 is retried, not raised, when Spotify says to wait a moment
+        seen = {"n": 0}
+        real_request, real_token = _http.request, globals()["_token"]
+
+        class _Resp:
+            def __init__(self, status):
+                self.status_code, self.headers = status, {"Retry-After": "0"}
+                self.content, self.text = b"{}", "{}"
+
+            def json(self):
+                return {"ok": True}
+
+        _http.request = lambda *a, **k: (
+            seen.update(n=seen["n"] + 1) or _Resp(429 if seen["n"] < 3 else 200)
+        )
+        globals()["_token"] = lambda: "t"
+        try:
+            assert _call("GET", "/x") == {"ok": True}, "should succeed after retries"
+            assert seen["n"] == 3, seen
+        finally:
+            _http.request, globals()["_token"] = real_request, real_token
         # the winning line is the one carrying the most distinct terms, not the first hit
         score, line = _lyric_score(["leaving", "hometown"], "I am leaving\nleaving my hometown tonight")
         assert (score, line) == (1.0, "leaving my hometown tonight"), (score, line)
