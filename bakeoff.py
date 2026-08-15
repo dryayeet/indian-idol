@@ -30,14 +30,22 @@ import agent
 
 # the incumbent, then every tool-capable model that is cheaper than it
 PANEL = [
-    "openai/gpt-5.4-mini",  # baseline: $0.75/$4.50 per 1M
-    "inclusionai/ling-3.0-flash",  # $0.02/$0.06
-    "qwen/qwen3.7-flash",  # $0.03/$0.13
-    "upstage/solar-pro4",  # $0.03/$0.12
-    "openai/gpt-oss-120b",  # $0.03/$0.17
-    "deepseek/deepseek-v4-flash",  # $0.06/$0.13
-    "openai/gpt-5.4-nano",  # $0.20/$1.25
-    "qwen/qwen3.7-plus",  # $0.32/$1.28
+    "qwen/qwen3.5-flash-02-23",  # current default: $0.07/$0.26 per 1M
+    "openai/gpt-5.4-mini",  # the model it replaced: $0.75/$4.50
+    "qwen/qwen3.7-flash",  # $0.03/$0.13 - best challenger from round one
+    "openai/gpt-5.4-nano",  # $0.20/$1.25 - most efficient from round one
+    # untested candidates, cheapest first
+    "mistralai/mistral-nemo",  # $0.02/$0.03
+    "nex-agi/nex-n2-mini",  # $0.02/$0.10
+    "openai/gpt-oss-20b",  # $0.03/$0.13
+    "qwen/qwen3-30b-a3b-instruct-2507",  # $0.05/$0.19
+    "qwen/qwen3.5-flash-02-23",  # $0.07/$0.26
+    "z-ai/glm-4.7-flash",  # $0.06/$0.40
+    "bytedance-seed/seed-1.6-flash",  # $0.07/$0.30
+    "mistralai/mistral-small-3.2-24b-instruct",  # $0.09/$0.25
+    "nvidia/nemotron-3.5-lightning",  # $0.10/$0.25
+    "meta-llama/llama-4-scout",  # $0.10/$0.30
+    "google/gemini-3.7-flash",  # $0.38/$1.88
 ]
 
 CASES = [
@@ -82,7 +90,7 @@ CASES = [
     {
         "name": "follow-up",  # needs turn 1 in scope; afk holds the write for approval
         "turns": ["find two songs about rain", "put those in a playlist called Rain"],
-        "want": "search_by_feel",
+        "want": ["search_by_feel", "search_by_lyrics"],  # "about rain" fairly reads as either
         "forbid": [],
         "golden": 2,
         "mode": "afk",
@@ -119,18 +127,21 @@ def score(case: dict, calls: list[str], reply: str, pending: list, error: str) -
         return {"points": 0, "max": 5, "notes": [f"used forbidden {used[0]}"], **base}
 
     points, notes = 1, []  # the forbidden check above is the first point
+    # a case may accept more than one tool: "songs about rain" is a fair read for
+    # either the mood search or the lyric search, and penalising one was a rubric bug
+    wanted = [case["want"]] if isinstance(case["want"], str) else (case["want"] or [])
 
     if case["want"] is None:
         if names:
             notes.append(f"called {names[0]} when nothing was needed")
         else:
             points += 2
-    elif case["want"] in names:
+    elif set(wanted) & set(names):
         points += 2
-        if names[0] != case["want"]:
+        if names[0] not in wanted:
             notes.append(f"got there via {names[0]} first")
     else:
-        notes.append(f"wanted {case['want']}, used {names or 'nothing'}")
+        notes.append(f"wanted {'/'.join(wanted)}, used {names or 'nothing'}")
 
     if len(calls) == len(set(calls)):
         points += 1

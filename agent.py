@@ -50,7 +50,7 @@ if PROVIDER == "gemini":
     MODEL = os.environ.get("GEMINI_MODEL") or "gemini-3.6-flash"
     KEY_VAR = "GEMINI_API_KEY"
 else:
-    MODEL = os.environ.get("OPENROUTER_MODEL") or "openai/gpt-5.4-mini"
+    MODEL = os.environ.get("OPENROUTER_MODEL") or "qwen/qwen3.5-flash-02-23"
     KEY_VAR = "OPENROUTER_API_KEY"
 SERVERS = {
     "spotify": {
@@ -106,10 +106,14 @@ def _llm(model: str | None = None, provider: str | None = None):
         model = model or (MODEL if PROVIDER == "gemini" else "gemini-3.6-flash")
         return ChatGoogleGenerativeAI(model=model, google_api_key=key, max_tokens=4000)
     return ChatOpenAI(
-        model=model or (MODEL if PROVIDER == "openrouter" else "openai/gpt-5.4-mini"),
+        model=model or (MODEL if PROVIDER == "openrouter" else "qwen/qwen3.5-flash-02-23"),
         api_key=key,
         base_url="https://openrouter.ai/api/v1",
         max_tokens=4000,
+        # Without this, qwen3.5-flash streams its deliberation as the visible reply
+        # ("The user wants...", stray </think> tags). `exclude` does not help: the
+        # model emits reasoning as ordinary content, so it has to be turned off.
+        extra_body={"reasoning": {"enabled": False}},
     )
 
 
@@ -200,6 +204,9 @@ async def build(
         )
 
 
+_THINK_TAGS = ("<think>", "</think>", "<thinking>", "</thinking>")
+
+
 def _token(chunk) -> str:
     """Text out of a streamed model chunk, ignoring tool-call and tool-result chunks."""
     if type(chunk).__name__ != "AIMessageChunk":
@@ -207,7 +214,11 @@ def _token(chunk) -> str:
     text = chunk.content
     if isinstance(text, list):  # content blocks when the model thinks
         text = "".join(b.get("text", "") for b in text if isinstance(b, dict))
-    return text or ""
+    if not text:
+        return ""
+    for tag in _THINK_TAGS:  # belt and braces: some models leak the tag mid-stream
+        text = text.replace(tag, "")
+    return text
 
 
 async def run(

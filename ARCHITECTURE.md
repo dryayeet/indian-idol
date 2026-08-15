@@ -147,6 +147,17 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-16** — Default OpenRouter model is now `qwen/qwen3.5-flash-02-23`,
+  chosen by a 14-model bake-off: it ties the previous default `openai/gpt-5.4-mini`
+  at 29/30 within one tool call and 28% of the latency, for a tenth of the input
+  price. Full results and method in [MODEL_BAKEOFF.md](MODEL_BAKEOFF.md); the
+  reasoning about running several models at once is in
+  [MULTI_MODEL.md](MULTI_MODEL.md). A rubric bug in the first round (demanding
+  `search_by_feel` for "songs about rain", where the lyric search is a fair read)
+  had masked the winner, so the fix came before the choice. The model needs
+  `extra_body={"reasoning": {"enabled": False}}` on OpenRouter: it otherwise streams
+  its deliberation as the visible reply, which the rubric did not catch. Disabling
+  it also cut the model from 16 tool calls to 13.
 - **2026-08-16** — Cut what the conversation carries, in two steps. (1) `_track`
   now returns name, artist, url only: the uri and id were the same identifier three
   times, and `_uri()` reconstructs a uri from the url when a playlist is built.

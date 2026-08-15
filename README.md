@@ -5,6 +5,8 @@ It is an MCP server. It gives an agent nine tools for the Spotify Web API and LR
 For the intent, read [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md).
 For what is built and why, read [ARCHITECTURE.md](ARCHITECTURE.md).
 For what is still owed, read [TODO.md](TODO.md).
+For the model choice, read [MODEL_BAKEOFF.md](MODEL_BAKEOFF.md).
+For multi-model plans, read [MULTI_MODEL.md](MULTI_MODEL.md).
 
 ## Tools
 
@@ -30,6 +32,8 @@ For what is still owed, read [TODO.md](TODO.md).
 | `agent.py` | The LangGraph agent. It calls the tools through MCP. |
 | `get_token.py` | Mints the refresh token. Run it again when the scopes change. |
 | `bakeoff.py` | Scores models on the agent's job. Run `python bakeoff.py`. |
+| `MODEL_BAKEOFF.md` | The model results and what they mean. |
+| `MULTI_MODEL.md` | Plans for using more than one model. |
 | `ui_check.py` | Drives the web interface headlessly. Run `python ui_check.py`. |
 | `run_tool.py` | A command-line client. Use it to call one tool. |
 | `streamlit_app.py` | A web interface. It shows all the tools as forms. |
@@ -57,7 +61,7 @@ to `openrouter` or `gemini` to force one.
 
 | `LLM_PROVIDER` | Key | Model variable | Default |
 |---|---|---|---|
-| `openrouter` (default) | `OPENROUTER_API_KEY` | `OPENROUTER_MODEL` | `openai/gpt-5.4-mini` |
+| `openrouter` (default) | `OPENROUTER_API_KEY` | `OPENROUTER_MODEL` | `qwen/qwen3.5-flash-02-23` |
 | `gemini` | `GEMINI_API_KEY` | `GEMINI_MODEL` | `gemini-3.6-flash` |
 
 The model must support tool calls.

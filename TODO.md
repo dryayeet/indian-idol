@@ -40,12 +40,33 @@ Done section records what was actually finished.
 - [ ] **Web searches for better context engineering** of tool usage and history
   passing. Some of this is now done (leaner tool payloads, stubbed old tool
   results), but the reading has not been done systematically.
+- [ ] **Score the reply, not just the tool calls.** The bake-off gave the new
+  default 29/30 while it was streaming "The user is asking for..." and stray
+  `</think>` tags to the user. Add a check for first-person deliberation and
+  thinking tags in the reply. See MODEL_BAKEOFF.md.
+- [ ] **Measure model consistency, not just one run.** The bake-off runs each case
+  once, so a model that succeeds four times in five looks identical to one that
+  always succeeds. Repeat each case k times and score the worst run.
+- [ ] **Fix the bake-off cost column.** Six of fourteen models read $0.0000 because
+  OpenRouter's usage counter lags past the 25s settle. Either poll until it moves
+  or compute cost from token usage and published prices.
 - [ ] **Make the bake-off discriminate.** Four of five models scored a perfect
   20/20 on 2026-08-16, so the rubric no longer separates them. What actually
   differed was efficiency: 6 tool calls and 46.6s for gpt-5.4-mini against 22
   calls and 287s for qwen3.7-plus. Score calls and seconds directly, and add
   harder cases: an ambiguous request, a tool error to recover from, and a
   multi-turn follow-up that depends on the previous answer.
+- [ ] **Embeddings for lyric ranking.** The highest-value multi-model move, and it
+  is not an LLM: `_lyric_score` counts shared words, so "headlights" never matches
+  "high beams". Lyrics never change, so embeddings are computed once and cached.
+  See [MULTI_MODEL.md](MULTI_MODEL.md).
+- [ ] **A relevance judge over search results.** `_relevant()` is a four-character
+  substring check; it kills gibberish but cannot tell that three "Rainy Days"
+  tracks match the words and miss the request. A cheap second model scoring each
+  candidate, with no access to the conversation, is the verifier pattern. See
+  [MULTI_MODEL.md](MULTI_MODEL.md).
+- [ ] **Provider failover on 402 and 429.** The provider is chosen once at import.
+  Failing over to the other one would have rescued two dead sessions already.
 - [ ] **Improve lyric ranking.** `search_by_lyrics` scores on the share of query
   terms present in the lyrics, so it rewards literal wording and misses
   paraphrase ("headlights" will not match "high beams"). Embeddings would fix
