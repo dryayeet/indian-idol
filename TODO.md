@@ -1,6 +1,6 @@
 # To do
 
-Living list. Updated 2026-08-15. Newest decisions go in
+Living list. Updated 2026-08-16. Newest decisions go in
 [ARCHITECTURE.md](ARCHITECTURE.md); this file is what is still owed.
 
 Ordered by what blocks the most. Check items off, do not delete them, so the
@@ -12,12 +12,9 @@ Done section records what was actually finished.
   `get_emotion_labels(text)` over the Hugging Face Serverless Inference API
   (`vladinc/bigfive-regression-model`, `SamLowe/roberta-base-go_emotions`).
   Nothing about trait or emotion inference exists yet, so the entire vibe-drift
-  workflow is blocked on this one item.
-- [ ] **Expose batch lyrics as a tool.** `_lyrics_for` now fetches concurrently
-  inside `search_by_lyrics` (6 workers, 30 tracks in about 4 seconds), but no
-  tool exposes it, so profiling a week of listening is still one model round
-  trip per song.
-- [ ] **Give the agent durable memory.** Conversation memory now exists but is
+  workflow is blocked on this one item. `listening_lyrics` already returns the
+  text it needs, so this is the last missing piece of workflow 1.
+- [ ] **Give the agent durable memory.** Conversation memory exists but is
   in-process only, so it dies with the Streamlit process. The trait trajectory
   needs a store that outlives every thread and restart, or "next week's reading
   measures last week's action" cannot happen. Upgrade path: swap `InMemorySaver`
@@ -25,37 +22,30 @@ Done section records what was actually finished.
   add a separate store for profiles.
 - [ ] **Add a feedback signal.** Nothing measures whether a playlist moved
   anything, so the loop stays open and the intervention claim stays unproven.
-- [ ] add the unified personality profile thing as a group of md files or instructions or prompt insertion/context, as a tool.
-- [ ] 'ranking' logic for songs fetching - personalise, see, properly.
-- [ ] spotify auth for other users
+- [ ] **Add the unified personality profile** as a group of md files, or
+  instructions, or prompt insertion/context, exposed as a tool. Needs the psych
+  server first for anything to write into it, but the shape can be designed now:
+  what a profile holds, who writes it, and what reads it back.
+- [ ] **Ranking logic for song fetching: personalise it properly.** Results are
+  whatever Spotify's text search returns, in its order, with no reference to the
+  user at all. Their own history (`top_tracks`, `recently_played`) is already
+  available and unused for ranking.
+- [ ] **Spotify auth for other users.** Today one refresh token means one account,
+  which is also the reason the deployed app cannot be shared. Real per-user auth
+  means an OAuth callback, per-user token storage, and a server that is no longer
+  stateless. Worth designing before it is built.
 
 ## Quality
 
-- [ ] **Give the CLI a memory, or say plainly that it has none.** The chat now
-      trims its history sensibly, but `python agent.py "..."` still passes no
-      checkpointer, so every run starts blank. Either wire a thread id flag or
-      document it in the CLI help.
-
-- [ ] **Grow the slash commands.** The chat bar takes `/manual`, `/afk`, `/auto`,
-      `/mode`, and `/help`. Worth adding: `/new` for a fresh thread, `/model` to
-      switch model mid-conversation, `/tools` to list what the server exposes, and
-      the same commands in the CLI, which currently has none. Unknown commands
-      answer with the help text rather than reaching the model, so adding one is
-      a branch in `_command()` in streamlit_app.py.
-
-- [ ] **Reuse the MCP session across Streamlit messages.** One session now covers a
-      turn, but each chat message still rebuilds the graph and pays the ~3.5s
-      subprocess spawn. Sessions are bound to their event loop and Streamlit calls
-      `asyncio.run` per message, so this needs a loop held in a background thread.
-
-- [ ] **Run a model bake-off for tool-call accuracy.** Build a small fixed set of
-  requests with known-good tool calls, then score models on: did it call the
-  right tool, did it write a usable `description`, did it avoid redundant
-  repeat searches. gpt-4o-mini failed the third badly; gpt-5.4-mini passed on
-  one sample, which is not evidence yet.
-- [ ] **Stream tokens, not just steps.** Steps now appear as they happen, but each
-  reply still lands as one block because `stream_mode="values"` emits per node.
-  Token-level streaming needs `stream_mode="messages"`.
+- [ ] **Web searches for better context engineering** of tool usage and history
+  passing. Some of this is now done (leaner tool payloads, stubbed old tool
+  results), but the reading has not been done systematically.
+- [ ] **Make the bake-off discriminate.** Four of five models scored a perfect
+  20/20 on 2026-08-16, so the rubric no longer separates them. What actually
+  differed was efficiency: 6 tool calls and 46.6s for gpt-5.4-mini against 22
+  calls and 287s for qwen3.7-plus. Score calls and seconds directly, and add
+  harder cases: an ambiguous request, a tool error to recover from, and a
+  multi-turn follow-up that depends on the previous answer.
 - [ ] **Improve lyric ranking.** `search_by_lyrics` scores on the share of query
   terms present in the lyrics, so it rewards literal wording and misses
   paraphrase ("headlights" will not match "high beams"). Embeddings would fix
@@ -66,9 +56,20 @@ Done section records what was actually finished.
   noise, so a bad description is presented as a real answer.
 - [ ] **Retry on Spotify 429.** `_call` raises with the `Retry-After` value but
   does not wait and retry. A week of listening scored in one run will hit it.
-- [ ] **Test beyond the selfchecks.** They cover pure logic (query building, env
-  merge, arg parsing). Nothing covers the HTTP paths against recorded
-  responses.
+- [ ] **Test beyond the selfchecks.** `ui_check.py` now covers the mode controls
+  end to end, but the HTTP paths are still untested against recorded responses,
+  so an endpoint moving under us is only found by running the thing.
+- [ ] **Give the CLI a memory, or say plainly that it has none.** The chat trims
+  and keeps history; `python agent.py "..."` passes no checkpointer, so every run
+  starts blank. Either add a thread-id flag or document it in the help text.
+- [ ] **Grow the slash commands.** The chat bar takes `/manual`, `/afk`, `/auto`,
+  `/mode`, `/help`. Worth adding: `/new` for a fresh thread, `/model` to switch
+  model mid-conversation, `/tools` to list what the server exposes, and the same
+  commands in the CLI, which has none. Each is a branch in `_command()`.
+- [ ] **Reuse the MCP session across Streamlit messages.** One session now covers
+  a turn, but each chat message rebuilds the graph and pays the ~3.5s subprocess
+  spawn. Sessions are bound to their event loop and Streamlit calls `asyncio.run`
+  per message, so this needs a loop held in a background thread.
 
 ## Housekeeping
 
@@ -81,26 +82,40 @@ Done section records what was actually finished.
   instead of a tuple. See Environment constraints in ARCHITECTURE.md.
 - [ ] **Lock down the deployed Streamlit app.** It runs on one Spotify account
   with no per-user login, so anyone with the URL controls that account and
-  spends the OpenRouter key. Restrict to named viewers, or add a shared
-  password gate.
+  spends the provider key. Restrict to named viewers, or add a shared password
+  gate. The approval modes help but do not solve it: `auto` is one click away,
+  and reads leak the account's history in every mode.
 - [ ] **Reword the abstract's workflow 2.** It claims `target_valence` and
   `target_acousticness`, which no new Spotify app can use. What is built is
-  keyword search over a model-written description.
+  keyword search over a model-written description, plus lyric reranking.
 
 ## Done
 
+- [X] **2026-08-16** — Context trimmed twice over: leaner tool payloads (23-30%
+  per track-bearing call, `_track` down to name/artist/url) and a pre-model hook
+  that stubs earlier turns' tool results (44% less sent on a third turn).
+- [X] **2026-08-16** — Bake-off built and run on five OpenRouter models for $0.15.
+  Four-way tie on score, so the default model was left alone; `gpt-5.4-mini` won
+  both tiebreakers anyway (6 calls, 46.6s).
+- [X] **2026-08-16** — Approval modes (`manual`, `afk`, `auto`) with slash
+  commands and buttons that stay in step, plus `ui_check.py` to prove it.
+- [X] **2026-08-16** — One MCP session per run: tool calls went from 3.6-4.0s
+  each to 0.30-0.41s. Replies stream token by token.
+- [X] **2026-08-16** — Gemini added as a second provider; provider now
+  auto-selected from whichever key is present, OpenRouter preferred.
+- [X] **2026-08-15** — `listening_lyrics`: recent or top tracks plus their lyrics
+  in one call, deduplicated and concurrent. Playlist read tools (`my_playlists`,
+  `playlist_tracks`) with the scope they need.
 - [X] **2026-08-15** — `search_by_lyrics`: fetch-and-rerank over LRCLIB lyrics,
   with concurrent fetching and honest empty results. Fixed the `/v1/search`
   limit-10 cap by paging.
-- [X] **2026-08-15** — Streaming steps in the chat: tool calls render as they are
-  made, not after the run finishes.
-- [X] **2026-08-15** — Chat UI with conversation memory (in-process), and track
-  links returned by the tool rather than assembled by the model.
+- [X] **2026-08-15** — Chat UI with conversation memory (in-process), streaming
+  steps, and track links returned by the tool rather than assembled by the model.
 - [X] **2026-08-15** — Fixed the mood-query dead zone. Mid-range values produced
   an empty query that fell back to searching the word "music". `description`
   is now a required argument and carries the search; the strongest axis adds
   one word.
-- [X] **2026-08-15** — Agent runs end to end over MCP stdio through OpenRouter,
-  and in the Streamlit app's Agent mode.
+- [X] **2026-08-15** — Agent runs end to end over MCP stdio, in the CLI and in
+  the Streamlit app's Agent mode.
 - [X] **2026-08-14** — MCP server, CLI runner, Streamlit tool forms, refresh-token
   auth, Feb 2026 Spotify endpoint migration, URI normalisation.
