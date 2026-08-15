@@ -13,9 +13,10 @@ Done section records what was actually finished.
       (`vladinc/bigfive-regression-model`, `SamLowe/roberta-base-go_emotions`).
       Nothing about trait or emotion inference exists yet, so the entire vibe-drift
       workflow is blocked on this one item.
-- [ ] **Add a batch lyrics tool.** `get_lyrics` is single-track, so profiling a
-      week means one model round trip per song. Needed before lyric-based
-      inference is practical on free-tier limits.
+- [ ] **Expose batch lyrics as a tool.** `_lyrics_for` now fetches concurrently
+      inside `search_by_lyrics` (6 workers, 30 tracks in about 4 seconds), but no
+      tool exposes it, so profiling a week of listening is still one model round
+      trip per song.
 - [ ] **Give the agent durable memory.** Conversation memory now exists but is
       in-process only, so it dies with the Streamlit process. The trait trajectory
       needs a store that outlives every thread and restart, or "next week's reading
@@ -35,12 +36,10 @@ Done section records what was actually finished.
 - [ ] **Stream tokens, not just steps.** Steps now appear as they happen, but each
       reply still lands as one block because `stream_mode="values"` emits per node.
       Token-level streaming needs `stream_mode="messages"`.
-- [ ] **Search by lyrics via fetch-and-rerank.** No lyric-text search exists:
-      Spotify matches names only, and LRCLIB's search returns zero hits for a
-      verbatim lyric line (both verified). The buildable version is to search
-      Spotify for candidates, pull each one's lyrics from LRCLIB, then rank by how
-      well the lyrics match the request. Costs one lyric fetch per candidate, so it
-      wants the batch lyrics tool first.
+- [ ] **Improve lyric ranking.** `search_by_lyrics` scores on the share of query
+      terms present in the lyrics, so it rewards literal wording and misses
+      paraphrase ("headlights" will not match "high beams"). Embeddings would fix
+      that; the emotion classifier from the psych server would fix it better.
 - [ ] **Detect empty search results.** Spotify's search never returns nothing: a
       meaningless query still yields arbitrary tracks (verified with
       `q="qwertypoiu zxcvbnm asdfgh"`). The agent cannot tell a good match from
@@ -70,6 +69,9 @@ Done section records what was actually finished.
 
 ## Done
 
+- [x] **2026-08-15** — `search_by_lyrics`: fetch-and-rerank over LRCLIB lyrics,
+      with concurrent fetching and honest empty results. Fixed the `/v1/search`
+      limit-10 cap by paging.
 - [x] **2026-08-15** — Streaming steps in the chat: tool calls render as they are
       made, not after the run finishes.
 - [x] **2026-08-15** — Chat UI with conversation memory (in-process), and track

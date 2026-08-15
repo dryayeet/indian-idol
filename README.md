@@ -1,7 +1,7 @@
 # Spotify MCP Server
 
 This is the Spotify tool server for the autonomous Spotify agent.
-It is an MCP server. It gives an agent seven tools for the Spotify Web API.
+It is an MCP server. It gives an agent eight tools for the Spotify Web API and LRCLIB.
 For the intent, read [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md).
 For what is built and why, read [ARCHITECTURE.md](ARCHITECTURE.md).
 For what is still owed, read [TODO.md](TODO.md).
@@ -14,6 +14,7 @@ For what is still owed, read [TODO.md](TODO.md).
 | `top_tracks(limit, time_range)` | Get the tracks that you played most. |
 | `get_lyrics(track, artist)` | Get the lyrics from LRCLIB. This tool does not use Spotify. |
 | `search_by_feel(description, valence, energy, acousticness, limit)` | Find tracks. The description does the searching. |
+| `search_by_lyrics(phrase, search_terms, candidates, limit)` | Find tracks whose lyrics match. Slower. Can return nothing. |
 | `my_playlists(limit)` | List the playlists the user owns or follows. |
 | `playlist_tracks(playlist, limit)` | Read the tracks in a playlist. |
 | `create_playlist(name, track_uris, description)` | Make a private playlist and add the tracks. |
@@ -105,6 +106,10 @@ The agent test lists the tools through MCP. It does not call the language model.
 - Spotify moved two endpoints in February 2026.
   The server uses `POST /me/playlists` and the `/items` path for playlist tracks.
 - Spotify has no lyrics endpoint. The lyrics come from LRCLIB.
+- No service searches lyrics. `search_by_lyrics` reads the lyrics of each
+  candidate track and ranks them. This costs one request for each candidate.
+- The search endpoint refuses a limit above 10. The server pages with an
+  offset to get more results.
 - The `mcp` package must stay below version 2.0.
   `langchain-mcp-adapters` does not support version 2.0 yet.
 - The agent remembers a conversation only while the web interface runs.

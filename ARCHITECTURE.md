@@ -20,8 +20,9 @@ actually built, why it is built that way, and what the environment forces.
         │  spotify_mcp.py    FastMCP server, stateless   │
         │                                               │
         │  recently_played   top_tracks   get_lyrics     │
-        │  search_by_feel    my_playlists                │
-        │  playlist_tracks   create_playlist             │
+        │  search_by_feel    search_by_lyrics            │
+        │  my_playlists      playlist_tracks             │
+        │  create_playlist                               │
         └──────────┬─────────────────────────┬──────────┘
                    │ OAuth refresh token     │ no auth
                    ▼                         ▼
@@ -101,6 +102,7 @@ debugging cycle.
 | Spotify endpoints moved 2026-02 | `POST /me/playlists` replaced `POST /users/{id}/playlists`; playlist `/tracks` became `/items`. The old paths return a bare 403 with no reason. |
 | Redirect URI rules | Plain HTTP is allowed only on a literal loopback IP. Use `http://127.0.0.1:8888/callback`, never `localhost`. |
 | Playlist reads are scoped | `GET /playlists/{id}/items` returns 403 without `playlist-read-private`, **even for public playlists**, and `GET /playlists/{id}` no longer carries track items. There is no unscoped way to read a playlist's contents. |
+| `/v1/search` caps `limit` at 10 | A limit of 11 or more returns `400 Invalid limit`. `offset` paging still works, so `_search_tracks` pages in tens. This broke `search_by_feel`'s own default of 20 until it was found. |
 | LRCLIB does not search lyrics | `/api/search?q=` matches track, artist, and album names. A verbatim lyric line returns zero hits, so there is no lyric-text search anywhere in the stack. |
 | TLS drops on this network | `accounts.spotify.com` intermittently drops the handshake. Every HTTP client is built with `httpx.HTTPTransport(retries=3)`. |
 | A file named `mcp.py` | Shadows the installed `mcp` package and breaks the import. The server file must not be named that. |
@@ -133,6 +135,12 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-15** — Added `search_by_lyrics`: Spotify supplies candidates, LRCLIB
+  supplies the lyrics, ranking happens locally on term coverage. It is the first
+  path that matches what a song says rather than what it is called, and the first
+  that can honestly return nothing. Also found and fixed a live bug: `/v1/search`
+  now rejects any `limit` above 10, so `search_by_feel`'s default of 20 was failing;
+  searches now page by tens through `_search_tracks`.
 - **2026-08-15** — Added `my_playlists` and `playlist_tracks`. Both need the
   `playlist-read-private` scope, which the existing refresh token does not carry,
   so `get_token.py` is restored with that scope added and must be run again.

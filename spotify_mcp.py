@@ -10,7 +10,9 @@ Check: python spotify_mcp.py --selfcheck
 """
 
 import os
+import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 from dotenv import load_dotenv
@@ -101,6 +103,24 @@ def get_lyrics(track: str, artist: str) -> str:
     return r.json().get("plainLyrics") or ""
 
 
+SEARCH_PAGE = 10  # /v1/search rejects limit > 10 outright; page with offset instead
+
+
+def _search_tracks(q: str, want: int) -> list[dict]:
+    """Search, paging past the 10-result ceiling until `want` tracks or results run out."""
+    out: list[dict] = []
+    for offset in range(0, min(want, 50), SEARCH_PAGE):
+        page = _call(
+            "GET",
+            "/search",
+            params={"q": q, "type": "track", "limit": SEARCH_PAGE, "offset": offset},
+        )["tracks"]["items"]
+        out += [_track(t) for t in page if t]
+        if len(page) < SEARCH_PAGE:
+            break
+    return out[:want]
+
+
 def _feel_query(description: str, valence: float, energy: float, acousticness: float) -> str:
     """The description carries the search; the strongest mood axis adds one word.
 
@@ -145,9 +165,81 @@ def search_by_feel(
     # to real feature targeting only if this app gets extended-mode access.
     if not description.strip():
         raise ValueError("description is required — say what the music should feel like")
-    q = _feel_query(description, valence, energy, acousticness)
-    params = {"q": q, "type": "track", "limit": min(limit, 50)}
-    return [_track(t) for t in _call("GET", "/search", params=params)["tracks"]["items"]]
+    return _search_tracks(_feel_query(description, valence, energy, acousticness), limit)
+
+
+_STOP = {
+    "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "at", "for", "with",
+    "is", "am", "are", "was", "were", "be", "been", "it", "its", "this", "that", "as",
+    "my", "your", "his", "her", "their", "our", "me", "you", "he", "she", "they", "we",
+    "song", "songs", "music", "track", "tracks", "about", "like", "feel", "feels",
+}
+
+
+def _terms(text: str) -> list[str]:
+    """Content words worth matching on, lowercased."""
+    return [w for w in re.findall(r"[a-z']{3,}", text.lower()) if w not in _STOP]
+
+
+def _lyric_score(terms: list[str], lyrics: str) -> tuple[float, str]:
+    """Share of the terms present in the lyrics, plus the line that carries the most."""
+    if not terms or not lyrics:
+        return 0.0, ""
+    low = lyrics.lower()
+    hits = {t for t in terms if t in low}
+    if not hits:
+        return 0.0, ""
+    line = max(lyrics.splitlines(), key=lambda ln: sum(t in ln.lower() for t in hits))
+    return round(len(hits) / len(terms), 3), line.strip()
+
+
+def _lyrics_for(track: dict) -> str:
+    """Lyrics for one track, empty string if LRCLIB has none. Safe to call in threads."""
+    try:
+        r = _http.get(
+            "https://lrclib.net/api/get",
+            params={"track_name": track["name"], "artist_name": track["artist"].split(",")[0]},
+            headers={"User-Agent": "spotify-agent (https://github.com/)"},
+        )
+        return r.json().get("plainLyrics") or "" if r.status_code == 200 else ""
+    except httpx.HTTPError:
+        return ""
+
+
+@app.tool()
+def search_by_lyrics(
+    phrase: str,
+    search_terms: str = "",
+    candidates: int = 30,
+    limit: int = 10,
+) -> list[dict]:
+    """Find tracks whose LYRICS match a phrase, not whose titles do.
+
+    phrase: the words or ideas that should appear in the words of the song, e.g.
+        "leaving town headlights never coming back".
+    search_terms: optional title-like words used to pull the candidate pool from
+        Spotify. Defaults to the phrase. Widen this if results come back empty.
+    candidates: how many Spotify results to fetch lyrics for. More is slower.
+
+    Slow: it reads the lyrics of every candidate, one request each. Unlike
+    search_by_feel this can legitimately return nothing, which means no candidate's
+    lyrics matched. Each result carries the score and the matching line.
+    """
+    if not phrase.strip():
+        raise ValueError("phrase is required — say what the words of the song should say")
+    pool = _search_tracks(search_terms.strip() or phrase, min(candidates, 50))
+    terms = _terms(phrase)
+
+    with ThreadPoolExecutor(max_workers=6) as pool_exec:  # 30 serial fetches is a minute
+        lyrics = list(pool_exec.map(_lyrics_for, pool))
+
+    scored = []
+    for track, words in zip(pool, lyrics):
+        score, line = _lyric_score(terms, words)
+        if score:
+            scored.append(track | {"lyric_score": score, "matched_line": line})
+    scored.sort(key=lambda t: t["lyric_score"], reverse=True)
+    return scored[:limit]
 
 
 def _playlist_id(item: str) -> str:
@@ -226,6 +318,12 @@ if __name__ == "__main__":
         assert _playlist_id("spotify:playlist:PID") == "PID"
         assert _playlist_id("https://open.spotify.com/playlist/PID?si=2") == "PID"
         assert _playlist_id(" PID ") == "PID"
+        assert _terms("Songs about leaving my hometown") == ["leaving", "hometown"]
+        # the winning line is the one carrying the most distinct terms, not the first hit
+        score, line = _lyric_score(["leaving", "hometown"], "I am leaving\nleaving my hometown tonight")
+        assert (score, line) == (1.0, "leaving my hometown tonight"), (score, line)
+        assert _lyric_score(["leaving", "hometown"], "just leaving")[0] == 0.5  # partial
+        assert _lyric_score(["leaving"], "no match here") == (0.0, "")  # honest empty
         _tok.update(value="cached", expires=time.time() + 3600)
         assert _token() == "cached"  # no network call when unexpired
         print("ok")
