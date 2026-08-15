@@ -1,6 +1,6 @@
 # Architecture
 
-Living document. Updated 2026-08-15.
+Living document. Updated 2026-08-16.
 
 For the project's intent and psychological framing, read
 [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md). This file records what is
@@ -11,10 +11,10 @@ actually built, why it is built that way, and what the environment forces.
 ```
                       ┌───────────────────────────┐
                       │  agent.py                 │
-   OpenRouter ◀───────│  LangGraph ReAct agent    │
-   (LLM, tool calls)  │  model ↔ tools loop       │
+  OpenRouter or ◀─────│  LangGraph ReAct agent    │
+  Gemini (LLM)        │  model ↔ tools loop       │
                       └─────────────┬─────────────┘
-                                    │ MCP, stdio subprocess
+                                    │ MCP, one stdio session per run
                                     ▼
         ┌───────────────────────────────────────────────┐
         │  spotify_mcp.py    FastMCP server, stateless   │
@@ -33,9 +33,9 @@ actually built, why it is built that way, and what the environment forces.
      streamlit_app.py   two modes: the agent above, or the tools as forms
 ```
 
-The agent holds all state (currently only within a single run). The MCP server is
-stateless: every tool call is self-contained, which keeps the server usable by any
-MCP client, not just this agent.
+The agent holds all state: conversation memory in the Streamlit chat, nothing in the
+CLI. The MCP server is stateless, so every tool call is self-contained and the server
+stays usable by any MCP client, not just this agent.
 
 ## Components
 
@@ -44,7 +44,7 @@ MCP client, not just this agent.
 | [spotify_mcp.py](spotify_mcp.py) | MCP server. Nine tools, token refresh, HTTP retries. | `python spotify_mcp.py` (stdio) |
 | [agent.py](agent.py) | LangGraph `create_react_agent`. Launches the server over stdio, reads its tool list, loops model ↔ tools. | `python agent.py "..."` |
 | [run_tool.py](run_tool.py) | Manual tool runner. Lists tools, prompts for fields, prints results. | `python run_tool.py` |
-| [streamlit_app.py](streamlit_app.py) | Web UI. Agent mode runs `agent.collect()`; Tools mode generates widgets from each tool's `inputSchema`. | `streamlit run streamlit_app.py` |
+| [streamlit_app.py](streamlit_app.py) | Web UI. Agent mode streams `agent.run()` into a chat; Tools mode generates widgets from each tool's `inputSchema`. | `streamlit run streamlit_app.py` |
 | [.env.example](.env.example) | The five environment variables. | copy to `.env` |
 
 Adding a tool to `spotify_mcp.py` makes it appear in all three clients with no other
@@ -67,7 +67,8 @@ The other workflow in the abstract (weekly trait drift) is not built. See Gaps.
 **MCP over stdio rather than importing the functions.** The agent could import
 `spotify_mcp` directly and skip the transport. It does not, because the abstract's
 premise is that the tools are reusable by any MCP client. The cost is a subprocess
-per run and a version pin (below).
+per run and a version pin (below). One session is held open for the whole turn; the
+alternative, connecting per tool call, measured 3.3s of overhead on 0.4s of work.
 
 **`httpx` directly, not `spotipy`.** Each call needed is one line. A
 client library would add a dependency and its own auth model for no gain.
@@ -136,6 +137,15 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-16** — `agent.build()` is now an async context manager holding ONE MCP
+  session for the whole turn. Every tool call previously opened its own stdio
+  connection: measured 3.6-4.0s per call against 0.39s for the same work called
+  directly, and it did not improve on repeat, because each call spawned a fresh
+  interpreter. Inside a session the same calls take 0.30-0.41s.
+- **2026-08-16** — Replies stream token by token. `astream` now runs with
+  `stream_mode=["values", "messages"]`: tool calls come from the values stream,
+  reply text from the messages stream, so `on_part` receives a "token" kind.
+  `collect()` rejoins tokens so buffered callers are unaffected.
 - **2026-08-16** — Default Gemini model moved from `gemini-3.7-flash` to
   `gemini-3.6-flash` after repeated free-tier rate limiting on 3.7. Same list price
   ($0.75/$3.75 per 1M), one generation older, agentic scores close (83.0%

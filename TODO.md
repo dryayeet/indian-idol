@@ -31,6 +31,11 @@ Done section records what was actually finished.
 
 ## Quality
 
+- [ ] **Reuse the MCP session across Streamlit messages.** One session now covers a
+      turn, but each chat message still rebuilds the graph and pays the ~3.5s
+      subprocess spawn. Sessions are bound to their event loop and Streamlit calls
+      `asyncio.run` per message, so this needs a loop held in a background thread.
+
 - [ ] **Run a model bake-off for tool-call accuracy.** Build a small fixed set of
   requests with known-good tool calls, then score models on: did it call the
   right tool, did it write a usable `description`, did it avoid redundant

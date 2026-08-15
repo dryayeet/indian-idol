@@ -122,8 +122,23 @@ def _agent_panel() -> None:
 
     parts: list[tuple[str, str]] = []
     with st.chat_message("assistant"):
+        live = {"text": "", "box": None}
+
+        def flush() -> None:
+            """Move the streamed text into history and start a fresh block after it."""
+            if live["text"].strip():
+                parts.append(("text", live["text"]))
+            live["text"], live["box"] = "", None
+
         def show(kind: str, text: str) -> None:
-            """Render each step the moment the agent produces it, not at the end."""
+            """Render output as it arrives: tokens grow in place, tools appear between."""
+            if kind == "token":
+                if live["box"] is None:
+                    live["box"] = st.empty()
+                live["text"] += text
+                live["box"].markdown(live["text"])
+                return
+            flush()
             parts.append((kind, text))
             _draw([(kind, text)])
 
@@ -140,6 +155,7 @@ def _agent_panel() -> None:
             except Exception as exc:  # noqa: BLE001 - surface model and API failures
                 st.error(f"{type(exc).__name__}: {exc}")
                 return
+        flush()
     st.session_state.chat.append(("assistant", parts))
 
 

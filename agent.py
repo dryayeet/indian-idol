@@ -19,9 +19,11 @@ file.
 import asyncio
 import os
 import sys
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_mcp_adapters.tools import load_mcp_tools
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
@@ -103,36 +105,71 @@ def _parts(message) -> list[tuple[str, str]]:
     return [("text", text.strip())] if text.strip() else []
 
 
+@asynccontextmanager
 async def build(checkpointer=None):
-    """Compile the agent. Pass a checkpointer to give it memory across turns."""
-    tools = await MultiServerMCPClient(SERVERS).get_tools()
-    return create_react_agent(_llm(), tools, prompt=SYSTEM, checkpointer=checkpointer)
+    """Compile the agent over ONE MCP session, held open for the whole turn.
+
+    Without the session, every tool call opens its own stdio connection: a new
+    interpreter, re-imports, a fresh handshake, about 3.3s of overhead on work that
+    takes 0.4s. Inside the session, tool calls cost what the work costs.
+    """
+    async with MultiServerMCPClient(SERVERS).session("spotify") as session:
+        tools = await load_mcp_tools(session)
+        yield create_react_agent(_llm(), tools, prompt=SYSTEM, checkpointer=checkpointer)
+
+
+def _token(chunk) -> str:
+    """Text out of a streamed model chunk, ignoring tool-call and tool-result chunks."""
+    if type(chunk).__name__ != "AIMessageChunk":
+        return ""
+    text = chunk.content
+    if isinstance(text, list):  # content blocks when the model thinks
+        text = "".join(b.get("text", "") for b in text if isinstance(b, dict))
+    return text or ""
 
 
 async def run(question: str, on_part, checkpointer=None, thread_id: str | None = None):
-    """Run one turn, calling on_part(kind, text) as each tool call and reply arrives.
+    """Run one turn, calling on_part(kind, text) as output arrives.
 
-    With a checkpointer and a thread_id, earlier turns on that thread are in scope,
-    so follow-ups like "make that a playlist" resolve.
+    kind is "tool" for a complete tool call, or "token" for a piece of the reply as
+    the model writes it. With a checkpointer and a thread_id, earlier turns on that
+    thread are in scope, so follow-ups like "make that a playlist" resolve.
     """
-    graph = await build(checkpointer)
     config = {"configurable": {"thread_id": thread_id}} if checkpointer else None
-    async for step in graph.astream(
-        {"messages": [("user", question)]}, config, stream_mode="values"
-    ):
-        for part in _parts(step["messages"][-1]):
-            on_part(*part)
+    async with build(checkpointer) as graph:
+        async for mode, payload in graph.astream(
+            {"messages": [("user", question)]},
+            config,
+            stream_mode=["values", "messages"],
+        ):
+            if mode == "messages":  # token by token, as the model writes
+                if text := _token(payload[0]):
+                    on_part("token", text)
+            elif tool_calls := [p for p in _parts(payload["messages"][-1]) if p[0] == "tool"]:
+                for part in tool_calls:  # replies come from the token stream instead
+                    on_part(*part)
 
 
 async def collect(question: str, **kw) -> list[tuple[str, str]]:
-    """run(), buffered. Returns every tool call and reply, in order."""
+    """run(), buffered. Tokens are joined back into whole replies."""
     out: list[tuple[str, str]] = []
-    await run(question, lambda kind, text: out.append((kind, text)), **kw)
-    return out
+
+    def add(kind: str, text: str) -> None:
+        if kind == "token" and out and out[-1][0] == "text":
+            out[-1] = ("text", out[-1][1] + text)
+        else:
+            out.append(("text" if kind == "token" else kind, text))
+
+    await run(question, add, **kw)
+    return [(kind, text.strip()) for kind, text in out if text.strip()]
 
 
 async def main(question: str) -> None:
-    await run(question, lambda kind, text: print(f"  -> {text}" if kind == "tool" else f"\n{text}"))
+    def show(kind: str, text: str) -> None:
+        print(f"\n  -> {text}\n" if kind == "tool" else text, end="", flush=True)
+
+    await run(question, show)
+    print()
 
 
 async def _selfcheck() -> None:
