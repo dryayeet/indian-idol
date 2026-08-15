@@ -136,6 +136,11 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-16** — Default Gemini model moved from `gemini-3.7-flash` to
+  `gemini-3.6-flash` after repeated free-tier rate limiting on 3.7. Same list price
+  ($0.75/$3.75 per 1M), one generation older, agentic scores close (83.0%
+  OSWorld-Verified). The lesson worth keeping: on a free tier the newest model is
+  the most quota-constrained, so availability beats benchmark position.
 - **2026-08-15** — Gemini added as a second provider behind `LLM_PROVIDER`, with its
   own key and model variables. Default `gemini-3.7-flash`, verified against the live
   key: it exists, takes 1M in / 65K out, and completed a real tool-calling run.

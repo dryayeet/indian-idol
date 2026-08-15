@@ -30,7 +30,7 @@ load_dotenv(os.path.join(HERE, ".env"))
 
 PROVIDER = os.environ.get("LLM_PROVIDER", "gemini").strip().lower()
 if PROVIDER == "gemini":
-    MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.7-flash")
+    MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
     KEY_VAR = "GEMINI_API_KEY"
 else:
     MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-5.4-mini")

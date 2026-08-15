@@ -54,7 +54,7 @@ There are two providers. Choose one with `LLM_PROVIDER` in the `.env` file:
 | `LLM_PROVIDER` | Key | Model variable | Default |
 |---|---|---|---|
 | `openrouter` (default) | `OPENROUTER_API_KEY` | `OPENROUTER_MODEL` | `openai/gpt-5.4-mini` |
-| `gemini` | `GEMINI_API_KEY` | `GEMINI_MODEL` | `gemini-3.7-flash` |
+| `gemini` | `GEMINI_API_KEY` | `GEMINI_MODEL` | `gemini-3.6-flash` |
 
 The model must support tool calls.
 

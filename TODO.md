@@ -26,6 +26,8 @@ Done section records what was actually finished.
 - [ ] **Add a feedback signal.** Nothing measures whether a playlist moved
   anything, so the loop stays open and the intervention claim stays unproven.
 - [ ] add the unified personality profile thing as a group of md files or instructions or prompt insertion/context, as a tool.
+- [ ] 'ranking' logic for songs fetching - personalise, see, properly.
+- [ ] spotify auth for other users
 
 ## Quality
 
