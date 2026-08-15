@@ -78,14 +78,16 @@ def _draw(parts) -> None:
 
 def _agent_panel() -> None:
     st.subheader("Chat")
-    st.caption(f"LangGraph ReAct loop over the MCP tools, model `{agent.MODEL}`")
+    st.caption(
+        f"LangGraph ReAct loop over the MCP tools, {agent.PROVIDER} `{agent.MODEL}`"
+    )
 
-    key = os.environ.get("OPENROUTER_API_KEY")
+    key = os.environ.get(agent.KEY_VAR)
     if not key:
         key = st.text_input(
-            "OpenRouter API key",
+            f"{agent.PROVIDER} API key",
             type="password",
-            help="Or put OPENROUTER_API_KEY in .env and restart.",
+            help=f"Or put {agent.KEY_VAR} in .env and restart.",
         )
 
     if "thread" not in st.session_state:
@@ -110,9 +112,9 @@ def _agent_panel() -> None:
     if not question:
         return
     if not key:
-        st.warning("An OpenRouter key is needed to run the agent.")
+        st.warning(f"A {agent.PROVIDER} key is needed to run the agent.")
         return
-    os.environ["OPENROUTER_API_KEY"] = key  # agent._llm() reads it at call time
+    os.environ[agent.KEY_VAR] = key  # agent._llm() reads it at call time
 
     st.session_state.chat.append(("user", question))
     with st.chat_message("user"):

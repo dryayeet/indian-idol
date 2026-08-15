@@ -1,10 +1,15 @@
-"""LangGraph ReAct agent that drives the Spotify MCP server through OpenRouter.
+"""LangGraph ReAct agent that drives the Spotify MCP server.
 
     python agent.py "songs that feel like driving away from my hometown for the last time"
     python agent.py --selfcheck      lists the tools over real MCP stdio, no LLM call
 
-Needs OPENROUTER_API_KEY in .env, plus the Spotify variables spotify_mcp.py reads.
-Pick a different model with OPENROUTER_MODEL; it must support tool calling.
+Two providers, chosen with LLM_PROVIDER in .env:
+
+    openrouter  (default)  OPENROUTER_API_KEY, OPENROUTER_MODEL
+    gemini                 GEMINI_API_KEY, GEMINI_MODEL
+
+Whichever model you pick must support tool calling. The Spotify variables that
+spotify_mcp.py reads are needed either way.
 
 The agent speaks MCP: it launches spotify_mcp.py as a subprocess over stdio and reads
 the tool list from the server, so tools added there appear here with no change to this
@@ -23,7 +28,13 @@ from langgraph.prebuilt import create_react_agent
 HERE = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(HERE, ".env"))
 
-MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-5.4-mini")
+PROVIDER = os.environ.get("LLM_PROVIDER", "gemini").strip().lower()
+if PROVIDER == "gemini":
+    MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.7-flash")
+    KEY_VAR = "GEMINI_API_KEY"
+else:
+    MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-5.4-mini")
+    KEY_VAR = "OPENROUTER_API_KEY"
 SERVERS = {
     "spotify": {
         "command": sys.executable,
@@ -64,9 +75,14 @@ were aiming for in its description."""
 
 
 def _llm():
-    key = os.environ.get("OPENROUTER_API_KEY")
+    key = os.environ.get(KEY_VAR)
     if not key:
-        raise SystemExit("missing OPENROUTER_API_KEY — copy .env.example to .env")
+        raise SystemExit(f"missing {KEY_VAR} — copy .env.example to .env and fill it in")
+    if PROVIDER == "gemini":
+        # imported here so OpenRouter users do not need the Google package installed
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        return ChatGoogleGenerativeAI(model=MODEL, google_api_key=key, max_tokens=4000)
     return ChatOpenAI(
         model=MODEL,
         api_key=key,
@@ -129,7 +145,8 @@ async def _selfcheck() -> None:
     assert "valence" in schema and "description" in schema, schema
     assert feel.args_schema.get("required") == ["description"], feel.args_schema
     assert "matching a mood" in feel.description, feel.description
-    print(f"ok — {len(names)} tools over MCP stdio, model {MODEL}")
+    assert PROVIDER in ("openrouter", "gemini"), f"unknown LLM_PROVIDER {PROVIDER!r}"
+    print(f"ok — {len(names)} tools over MCP stdio, provider {PROVIDER}, model {MODEL}")
 
 
 if __name__ == "__main__":

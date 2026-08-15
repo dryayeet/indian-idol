@@ -48,12 +48,20 @@ python agent.py "songs that feel like driving away from my hometown"
 ```
 
 The agent translates the request into emotion values, then calls the tools.
-Set `OPENROUTER_MODEL` to change the model. The model must support tool calls.
+
+There are two providers. Choose one with `LLM_PROVIDER` in the `.env` file:
+
+| `LLM_PROVIDER` | Key | Model variable | Default |
+|---|---|---|---|
+| `openrouter` (default) | `OPENROUTER_API_KEY` | `OPENROUTER_MODEL` | `openai/gpt-5.4-mini` |
+| `gemini` | `GEMINI_API_KEY` | `GEMINI_MODEL` | `gemini-3.7-flash` |
+
+The model must support tool calls.
 
 ## Credentials
 
 The server reads three Spotify variables from a `.env` file.
-The agent reads `OPENROUTER_API_KEY` from the same file.
+The agent reads its provider key from the same file.
 Use `.env.example` as the pattern.
 
 1. Open the [Spotify dashboard](https://developer.spotify.com/dashboard).

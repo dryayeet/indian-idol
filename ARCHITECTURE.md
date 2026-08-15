@@ -81,9 +81,12 @@ gap between the abstract and the implementation.
 **LRCLIB for lyrics.** Spotify has no public lyrics endpoint. LRCLIB needs no key
 and no auth.
 
-**OpenRouter as the LLM provider.** One key covers many models, and the model is
-swappable through `OPENROUTER_MODEL` without touching code. Default is
-`openai/gpt-5.4-mini`. Any model chosen must support tool calling.
+**Two LLM providers, switched by `LLM_PROVIDER`.** OpenRouter (default) reaches many
+models behind one key; Gemini is the second, added because Google's free tier keeps
+the agent running when OpenRouter credits are gone. Each has its own key and model
+variable, so switching is an env edit, not a code change. `langchain_google_genai` is
+imported inside `_llm()` so OpenRouter users need not install it. Any model chosen
+must support tool calling.
 
 **Refresh token rather than an interactive login.** The server is launched by an
 agent, not by a person, so it cannot open a browser. The refresh token is minted
@@ -133,6 +136,15 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-15** — Gemini added as a second provider behind `LLM_PROVIDER`, with its
+  own key and model variables. Default `gemini-3.7-flash`, verified against the live
+  key: it exists, takes 1M in / 65K out, and completed a real tool-calling run.
+  `gemini-3.1-flash` does **not** exist; at 3.1 Google serves only `-flash-lite` and
+  `-pro`. Google's direct price for 3.7 Flash is $0.75/$3.75 per 1M through
+  2026-12-31, then $1.50/$7.50 — the same as 3.6 Flash, not cheaper. (The lower
+  $0.38/$1.88 figure seen earlier was OpenRouter's resale price, not Google's.)
+  Every Flash model has a free tier, which is why Gemini is the fallback when
+  OpenRouter credits run out.
 - **2026-08-15** — Added `listening_lyrics`, which collects recent or top tracks
   and their lyrics in one call, deduplicated and concurrently fetched. It removes
   the round-trip-per-song cost that blocked lyric-based profiling, and caps each
