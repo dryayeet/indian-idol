@@ -12,6 +12,7 @@ Run:  python spotify_mcp.py           (stdio)
 Check: python spotify_mcp.py --selfcheck
 """
 
+import logging
 import os
 import re
 import time
@@ -110,6 +111,31 @@ def top_tracks(limit: int = 20, time_range: str = "short_term") -> list[dict]:
     """Most-played tracks. time_range: short_term (~4 weeks), medium_term, long_term."""
     params = {"limit": min(limit, 50), "time_range": time_range}
     return [_track(t) for t in _call("GET", "/me/top/tracks", params=params)["items"]]
+
+
+@app.tool()
+def web_search(query: str, limit: int = 5) -> list[dict]:
+    """Search the web for what Spotify does not know.
+
+    Use it for the context around music rather than the music itself: what a song is
+    about, who an artist is, what a phrase in a lyric means, what film a track is from,
+    why a record was made. Do not use it to find tracks; search_by_feel and
+    search_by_lyrics do that and they return playable links.
+
+    Returns titles, urls, and snippets. Read the snippets; do not present a link as an
+    answer on the strength of its title.
+    """
+    from ddgs import DDGS  # imported here so a missing package breaks one tool, not the server
+
+    # ddgs logs every backend it tries and primp logs every response. Both go to stderr,
+    # so the MCP protocol on stdout is safe either way, but one search should not write
+    # ten lines to the log. primp is the noisy one; ddgs alone is not enough.
+    for noisy in ("ddgs", "primp"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+    return [
+        {"title": r["title"], "url": r["href"], "snippet": (r["body"] or "")[:400]}
+        for r in DDGS().text(query, max_results=min(limit, 10))
+    ]
 
 
 @app.tool()

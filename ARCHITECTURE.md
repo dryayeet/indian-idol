@@ -144,6 +144,14 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-17** — `web_search`, over DuckDuckGo through `ddgs`. Keyless, so it adds a
+  package but no credential. It is for the context around music rather than for finding
+  music: the docstring and the prompt both say so, because a search tool that returns
+  no playable links would otherwise get used for track-finding and produce answers
+  nobody can listen to. One thing checked before shipping: `ddgs` and its HTTP layer log
+  every backend they try, and this server speaks MCP over stdout, so a stray print would
+  corrupt the protocol. Verified stdout stays empty; the noise is stderr, and the two
+  loggers are quietened anyway.
 - **2026-08-17** — The agent is told what the user's playlists are called, and the
   bare-name problem goes away. "compare Unmaad and Ni || Ti" used to spend ten calls
   searching them as song titles before trying `my_playlists`; it now goes straight to

@@ -1,7 +1,7 @@
 # Spotify MCP Server
 
 This is the Spotify tool server for the autonomous Spotify agent.
-It is an MCP server. It gives an agent nineteen tools for the Spotify Web API and LRCLIB.
+It is an MCP server. It gives an agent twenty tools for the Spotify Web API, LRCLIB, and the web.
 For the intent, read [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md).
 For what is built and why, read [ARCHITECTURE.md](ARCHITECTURE.md).
 For what is still owed, read [TODO.md](TODO.md).
@@ -15,6 +15,7 @@ For multi-model plans, read [MULTI_MODEL.md](MULTI_MODEL.md).
 |---|---|
 | `recently_played(limit)` | Get the tracks that you played last. The maximum is 50. |
 | `top_tracks(limit, time_range)` | Get the tracks that you played most. |
+| `web_search(query, limit)` | Search the web for context Spotify does not carry. |
 | `get_lyrics(track, artist)` | Get the lyrics from LRCLIB. This tool does not use Spotify. |
 | `search_by_feel(description, valence, energy, acousticness, limit)` | Find tracks. The description does the searching. |
 | `listening_lyrics(source, limit, chars)` | Get the lyrics of recent or top tracks in one call. |
@@ -177,6 +178,8 @@ The agent test lists the tools through MCP. It does not call the language model.
   Pass `genres=false` for a result in one second.
 - Spotify no longer sends an artist's genres, popularity, or follower count,
   and it no longer sends a podcast's publisher.
+- `web_search` uses DuckDuckGo through the `ddgs` package. It needs no key.
+  DuckDuckGo limits how often you may search. A burst of searches can fail.
 - The connection to `accounts.spotify.com` can fail.
   The HTTP client then tries again three times.
 
