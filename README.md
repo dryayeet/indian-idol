@@ -1,7 +1,7 @@
 # Spotify MCP Server
 
 This is the Spotify tool server for the autonomous Spotify agent.
-It is an MCP server. It gives an agent twenty tools for the Spotify Web API, LRCLIB, and the web.
+It is an MCP server. It gives an agent twenty one tools for the Spotify Web API, LRCLIB, and the web.
 For the intent, read [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md).
 For what is built and why, read [ARCHITECTURE.md](ARCHITECTURE.md).
 For what is still owed, read [TODO.md](TODO.md).
@@ -29,6 +29,7 @@ For multi-model plans, read [MULTI_MODEL.md](MULTI_MODEL.md).
 | `liked_songs(limit)` | The user's Liked Songs. |
 | `saved_albums(limit)` | Albums in the user's library. |
 | `album_tracks(album)` | The tracks on an album. |
+| `similar_artists(artist, limit)` | Artists that sound like this one. Needs a Last.fm key. |
 | `artist_albums(artist, limit)` | An artist's releases, by name or id. |
 | `now_playing()` | What is playing right now. |
 | `saved_podcasts(limit)` | Podcasts in the user's library. |
@@ -95,6 +96,7 @@ you declined. It then chooses another action.
 
 The server reads three Spotify variables from a `.env` file.
 The agent reads `OPENROUTER_API_KEY` from the same file.
+`LASTFM_API_KEY` is optional. Get one at <https://www.last.fm/api/account/create>.
 Use `.env.example` as the pattern.
 
 1. Open the [Spotify dashboard](https://developer.spotify.com/dashboard).
@@ -173,9 +175,16 @@ The agent test lists the tools through MCP. It does not call the language model.
   Without them it cannot tell a playlist name from a song title, and it
   searches for the name instead of reading the playlist. The list is cached
   for five minutes, so a new playlist appears without a restart.
-- Genres come from MusicBrainz, which asks for one request each second.
-  `playlist_vibe` therefore reads five artists and takes about seven seconds.
-  Pass `genres=false` for a result in one second.
+- Genres come from Last.fm when `LASTFM_API_KEY` is set, one tag lookup for
+  each track. Without the key they come from MusicBrainz instead, which asks
+  for one request each second and can only read artists, not tracks.
+- Last.fm has few tags for music outside the Western catalogue. A playlist it
+  does not know falls back to MusicBrainz, which takes longer than either
+  source alone.
+  `playlist_vibe` then reads only five artists and takes about seven seconds.
+  Pass `genres=false` for a result in one second either way.
+- `similar_artists` needs the Last.fm key. Spotify's own related-artists
+  endpoint answers 403 for this app, so there is no other route to it.
 - Spotify no longer sends an artist's genres, popularity, or follower count,
   and it no longer sends a podcast's publisher.
 - `web_search` uses DuckDuckGo through the `ddgs` package. It needs no key.

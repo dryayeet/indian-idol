@@ -562,6 +562,82 @@ def playlist_tracks(playlist: str, limit: int = 200) -> dict:
     }
 
 
+LASTFM = "https://ws.audioscrobbler.com/2.0/"
+LASTFM_WORKERS = 10  # no published per-second cap; 46 tracks is ten rounds at five
+
+
+def _lastfm(method: str, **params) -> dict:
+    """One Last.fm call. Returns {} when there is no key or the call fails.
+
+    Everything built on this degrades to the MusicBrainz path rather than erroring: the
+    key is optional, and a tag lookup is never worth failing a music question over.
+    """
+    key = os.environ.get("LASTFM_API_KEY")
+    if not key:
+        return {}
+    try:
+        r = _http.get(
+            LASTFM,
+            params={"method": method, "api_key": key, "format": "json", **params},
+            timeout=15,
+        )
+        return r.json() if r.status_code < 400 else {}
+    except (httpx.HTTPError, ValueError):
+        return {}
+
+
+def _plain(text: str) -> str:
+    """Letters and digits only, lowercased. For comparing names people typed loosely."""
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+def _track_tags(tracks: list[dict]) -> list[str]:
+    """Tags for a whole playlist, from Last.fm, commonest first.
+
+    Per track, where MusicBrainz can only do per artist, and with no one-per-second
+    limit, so 46 tracks take about a second rather than five artists taking seven.
+    """
+
+    def one(t: dict) -> list[str]:
+        d = _lastfm("track.getTopTags", artist=t["artist"].split(", ")[0], track=t["name"])
+        tags = (d.get("toptags") or {}).get("tag") or []
+        if isinstance(tags, dict):  # Last.fm sends a bare object when there is one tag
+            tags = [tags]
+        return [x["name"].lower() for x in tags[:5]]
+
+    # Last.fm tags are user-written, so the same genre arrives spelled several ways and
+    # the artist's own name is usually the top "tag". Neither is a genre. Compare on
+    # letters only, because the tag is "j cole" where the artist is "J. Cole".
+    artists = {_plain(a) for t in tracks for a in t["artist"].split(",")}
+    counts: dict[str, int] = {}
+    with ThreadPoolExecutor(max_workers=LASTFM_WORKERS) as pool:
+        for tags in pool.map(one, tracks):
+            for tag in tags:
+                tag = tag.replace("-", " ").strip()
+                if tag and _plain(tag) not in artists:
+                    counts[tag] = counts.get(tag, 0) + 1
+    return sorted(counts, key=counts.get, reverse=True)[:10]
+
+
+@app.tool()
+def similar_artists(artist: str, limit: int = 10) -> list[dict]:
+    """Artists that sound like this one. Takes an artist name.
+
+    Spotify's own related-artists endpoint is 403 for this app, so this is the only
+    route to "more like this". Needs LASTFM_API_KEY.
+    """
+    d = _lastfm("artist.getSimilar", artist=artist, limit=min(limit, 50), autocorrect=1)
+    found = (d.get("similarartists") or {}).get("artist") or []
+    if not found:
+        if not os.environ.get("LASTFM_API_KEY"):
+            raise RuntimeError(
+                "no LASTFM_API_KEY set. Get a free one at "
+                "https://www.last.fm/api/account/create and put it in .env"
+            )
+        return []  # a real, honest empty: Last.fm knows the artist and has no neighbours
+    return [{"name": a["name"], "match": round(float(a.get("match") or 0), 3)} for a in found]
+
+
 MB = "https://musicbrainz.org/ws/2/artist"
 MB_AGENT = "spotify-agent/0.1 (https://github.com/)"
 MB_ARTISTS = 5  # MusicBrainz asks for one request a second, so this is 5s of waiting
@@ -591,7 +667,10 @@ def _genres(names: list[str]) -> list[str]:
         if not artists:
             continue
         for tag in (artists[0].get("tags") or []) + (artists[0].get("genres") or []):
-            counts[tag["name"]] = counts.get(tag["name"], 0) + int(tag.get("count") or 1)
+            name = tag["name"]
+            if name.startswith("mb_"):  # MusicBrainz internals, not genres
+                continue
+            counts[name] = counts.get(name, 0) + int(tag.get("count") or 1)
     return sorted(counts, key=counts.get, reverse=True)[:10]
 
 
@@ -631,7 +710,10 @@ def playlist_vibe(playlist: str, genres: bool = True) -> dict:
         "measured": len(feats),
         "mood": mood or "no track in this playlist could be measured",
         "artists": leaders,
-        "genres": _genres(leaders) if genres else [],
+        # Last.fm reads a tag for every track in about a second. MusicBrainz can only
+        # do the top five artists and must wait a second between them. Same shape out,
+        # so the key is an upgrade rather than a requirement.
+        "genres": (_track_tags(tracks) or _genres(leaders)) if genres else [],
     }
 
 

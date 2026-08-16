@@ -23,6 +23,7 @@ actually built, why it is built that way, and what the environment forces.
         │  search_by_feel    search_by_lyrics            │
         │  my_playlists      playlist_tracks             │
         │  followed_artists  saved_podcasts              │
+        │  similar_artists   playlist_vibe   web_search  │
         │  listening_lyrics  create_playlist             │
         └──────────┬─────────────────────────┬──────────┘
                    │ OAuth refresh token     │ no auth
@@ -144,6 +145,26 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-17** — Last.fm, found by surveying comparable agents rather than by reading
+  Spotify's documentation. `artist.getSimilar` is a working replacement for
+  `/related-artists`, which has been 403 here since Feb 2026, so `similar_artists` puts
+  "more like this" back. `track.getTopTags` gives a tag per track where MusicBrainz can
+  only give one per artist, and has no one-per-second limit. Measured, not predicted:
+  a 46-track rap playlist went from 7.7s to 3.9s and its tags got sharper, naming
+  `conscious hip hop` and `west coast hip hop` rather than the artists' whole careers.
+  A 15-track Sufi and Bollywood playlist got *slower*, 7.8s, because Last.fm has no
+  tags for those tracks at all and the MusicBrainz fallback runs after the attempt.
+  Same Western bias as ReccoBeats, and worth remembering before adding a third source
+  that shares it. Two filters were needed on the way: Last.fm tags are user-written, so
+  the artist's own name is usually the top "tag" (compared on letters only, since the
+  tag reads `j cole` where the artist is `J. Cole`), and `hip-hop` and `hip hop` arrive
+  as separate tags. It is the only source
+  here that needs a key, so everything degrades without one: `_lastfm` returns `{}`,
+  genres fall back to the MusicBrainz path unchanged, and `similar_artists` says where
+  to get a key rather than failing quietly. Worth noting where this came from: every
+  comparable project surveyed (PersonalAIs, Moodify, the LangGraph DJ agents) is built
+  on `/audio-features` and `/recommendations` and appears not to have noticed they are
+  dead. Reading their dependencies was more useful than reading their features.
 - **2026-08-17** — The prompt is tagged blocks now, and the replies stopped reading
   like a press release. The analytical instruction added earlier had produced exactly
   the register it asked for, a critic filing a review: bold section headings, "a study

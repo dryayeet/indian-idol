@@ -72,6 +72,10 @@ Done section records what was actually finished.
 - [ ] **Measure whether feature ranking actually helps.** It is built and it clearly
   orders by valence, but no one has checked that the ranked answer is a better answer
   on real requests. Add it to the bake-off rubric rather than trusting the numbers.
+- [ ] **Mood transitions, taken from PersonalAIs.** "I'm sad and I want to not be" asks
+  for an arc, not a mood: a sequence that starts where the listener is and moves. Every
+  tool here answers with a flat set. The ReccoBeats features make it buildable, and it
+  is the one idea in the comparable projects that this one has no answer to.
 - [ ] **One library summary instead of four lists.** The best idea in the other MCP
   servers (`spotify_library_stats`, `spotify_query_library`): counts, top artists by
   saved-track count, the spread of release years, in one call. The model currently has
@@ -167,6 +171,10 @@ Done section records what was actually finished.
   keyword search over a model-written description, plus lyric reranking.
 
 ## Done
+
+- [X] **2026-08-17** — Last.fm wired in: similar_artists replaces the dead
+  related-artists endpoint, and playlist_vibe reads a tag per track instead of five
+  artists. Optional key; without it genres fall back to MusicBrainz.
 
 - [X] **2026-08-17** — Voice: tagged prompt blocks and a short list of things never to
   write, so replies stop reading like a review. A few-shot block was tried and cut: it

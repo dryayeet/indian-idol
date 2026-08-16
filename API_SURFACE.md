@@ -158,6 +158,27 @@ off 0.5, and  reports what a playlist actually sounds like.
 keyless, and it returned eight usable tags for a test artist. It is the only route to
 anything genre-shaped now that Spotify sends none.
 
+## 2b. Agents doing the same job
+
+Surveyed 2026-08-17. The finding that matters: **almost all of them are built on
+endpoints that no longer answer**, and most have not noticed.
+
+| Project | What it is | State |
+|---|---|---|
+| [PersonalAIs](https://www.orfium.com/data-science/%F0%9F%8E%B6-personalais-an-ai-music-recommendation-system-for-personalized-mood-aware-listening/) (Orfium, GSoC 2025) | The closest thing to this project. Spotify API plus MCP plus Qwen2.5-7B, a Next.js chat, a valence/energy emotion map, and mood transitions. Supplements with Last.fm. | Its valence and energy come from `/audio-features` and its picks from `/recommendations`. Both are dead for new apps. |
+| [udossa/spotify-ai-agent](https://github.com/udossa/spotify-ai-agent) | LangGraph, LangChain, MCP, ChromaDB, spotipy. Playlists from a natural-language intent. | Nearest architecture to this one. |
+| [Astropomeai's AI DJ](https://medium.com/@astropomeai/ai-music-curation-creating-an-ai-dj-assistant-with-langgraph-studio-and-spotify-api-560a492b7c2b) | LangGraph Studio plus the Spotify API, mood playlists from valence and energy. | Same dead dependency. |
+| [Moodify](https://github.com/mahnoorshafi/Moodify) | Mood playlists from listening history, using danceability, energy, valence. | Same dead dependency. |
+| [prathami1/spotify-analysis](https://github.com/prathami1/spotify-analysis) | Flask, predicts mood from listening habits, Google NLP for emotion. | Closest in intent to the abstract. |
+| Spotify itself | Semantic IDs: each track as quantised tokens, an LLM fine-tuned to generate them for playlisting. | Not public API. |
+
+What this project has that they do not: a tested map of what still answers, and
+replacements wired in for what does not (ReccoBeats, MusicBrainz). Lyric search by
+fetch-and-rerank. Approval modes. They are recommenders; this one is built to explain.
+
+What they have that this does not: **mood transitions**. "I'm sad and I want to be
+happy" is a request for an arc, and every tool here returns a flat set.
+
 ## 3. What is worth taking
 
 In the TODO, in order. Briefly:
