@@ -35,7 +35,23 @@ def main() -> None:
     assert "No such command" in app.session_state.chat[-1][1][0][1]
     assert app.session_state.mode == "afk", "a bad command changed the mode"
 
-    print("ok — buttons and slash commands stay in step")
+    _forms(app)
+    print("ok — buttons and slash commands stay in step, every tool form renders")
+
+
+def _forms(app) -> None:
+    """Render the form of every tool.
+
+    Streamlit refuses a number_input whose value is above max_value, so the day a tool
+    default went to 200 against a hardcoded ceiling of 50, most of the Tools page threw
+    before drawing anything. The widget bounds have to follow the schema.
+    """
+    app.sidebar.radio[0].set_value("Tools").run()
+    names = app.selectbox[0].options
+    assert len(names) > 10, names
+    for name in names:
+        app.selectbox[0].set_value(name).run()
+        assert not app.exception, f"{name}: {app.exception[0].message}"
 
 
 if __name__ == "__main__":
