@@ -1,7 +1,7 @@
 # Spotify MCP Server
 
 This is the Spotify tool server for the autonomous Spotify agent.
-It is an MCP server. It gives an agent eighteen tools for the Spotify Web API and LRCLIB.
+It is an MCP server. It gives an agent nineteen tools for the Spotify Web API and LRCLIB.
 For the intent, read [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md).
 For what is built and why, read [ARCHITECTURE.md](ARCHITECTURE.md).
 For what is still owed, read [TODO.md](TODO.md).
@@ -20,6 +20,7 @@ For multi-model plans, read [MULTI_MODEL.md](MULTI_MODEL.md).
 | `listening_lyrics(source, limit, chars)` | Get the lyrics of recent or top tracks in one call. |
 | `search_by_lyrics(phrase, search_terms, candidates, limit)` | Find tracks whose lyrics match. Slower. Can return nothing. |
 | `my_playlists(limit)` | List the playlists the user owns or follows. |
+| `playlist_names()` | Just the playlist titles. The agent reads this into its prompt. |
 | `playlist_tracks(playlist, limit)` | Read a playlist by name, id, URI, or link. Returns its title and tracks. |
 | `playlist_vibe(playlist, genres)` | Measure how a playlist sounds: mood, spread, artists, genres. |
 | `followed_artists(limit)` | Artists the user follows. Names only. |
@@ -146,7 +147,7 @@ The agent test lists the tools through MCP. It does not call the language model.
   A person who opens the web interface has full control of that account.
 - Spotify stopped the audio-feature endpoints on 27 November 2024.
   New apps cannot use `/v1/audio-features` or `/v1/recommendations`.
-  Thus `search_by_feel` uses keywords, not audio-feature targets.
+  The description still does the searching; ReccoBeats does the ranking.
 - Spotify moved two endpoints in February 2026.
   The server uses `POST /me/playlists` and the `/items` path for playlist tracks.
 - Spotify has no lyrics endpoint. The lyrics come from LRCLIB.
@@ -167,6 +168,10 @@ The agent test lists the tools through MCP. It does not call the language model.
   `playlist_vibe` get them from ReccoBeats instead. Coverage is not complete
   and the gap favours the Western catalogue: 98 percent on a US rap playlist
   here, 65 percent on Hindi-heavy top tracks. A missing track is normal.
+- The agent puts the user's playlist names into its own prompt at startup.
+  Without them it cannot tell a playlist name from a song title, and it
+  searches for the name instead of reading the playlist. The list is cached
+  for five minutes, so a new playlist appears without a restart.
 - Genres come from MusicBrainz, which asks for one request each second.
   `playlist_vibe` therefore reads five artists and takes about seven seconds.
   Pass `genres=false` for a result in one second.

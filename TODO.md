@@ -45,14 +45,13 @@ Done section records what was actually finished.
   cannot revise one, so "drop the last three" and "put the slow ones at the end" are
   both impossible. The most-requested thing every other Spotify MCP server has and
   this one does not. See API_SURFACE.md.
-- [ ] **A bare name still defeats the agent.** "compare Unmaad and Ni || Ti" makes it
-  search for them as song titles for ten calls before trying `my_playlists`. Three
-  different system-prompt wordings were tried: one left it flailing, one made it ask
-  the user instead of looking, one made it give up with no tool call at all. Prompting
-  is the wrong instrument. The structural fix that worked twice before is to remove the
-  choice: resolve names inside the tool, as `playlist_tracks` and `album_tracks` now
-  do. `search_by_feel` cannot do that, since it cannot know a name is a playlist, so
-  the answer is probably a single `find(name)` tool that says what a name refers to.
+- [ ] **Album and artist names are still ambiguous.** Playlist names are in the prompt
+  now, so a playlist is recognised without a lookup. An album or artist the user names
+  is not, and `album_tracks` and `artist_albums` resolve by search rather than against
+  the user's own library, so a wrong-but-plausible match is possible. Only worth fixing
+  if it is seen to bite.
+- [ ] **The name list does not scale past a few hundred playlists.** At 63 it is 346
+  tokens. Someone with a thousand would need the names retrieved rather than listed.
 - [ ] **It second-guesses a playlist name.** Asked for a playlist called "vibe test -
   delete me" it refused, calling the name "accidental or placeholder". Naming is the
   user's business.
@@ -155,6 +154,10 @@ Done section records what was actually finished.
 
 ## Done
 
+- [X] **2026-08-17** — The user's playlist names go into the agent's prompt, so a name
+  in a request is recognised as a playlist instead of searched for as a song. Ten
+  wasted calls became two. Three prompt wordings had failed first; the problem was
+  missing information, not a missing instruction.
 - [X] **2026-08-17** — Audio features again, from ReccoBeats, and genres from
   MusicBrainz. `search_by_feel` ranks by measured distance when a dial is moved;
   `playlist_vibe` measures a playlist. Coverage is Western-biased, so unmeasured

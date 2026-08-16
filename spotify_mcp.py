@@ -418,9 +418,28 @@ def _pages(path: str, limit: int, page: int = 50, **params) -> list[dict]:
     return out[:limit]
 
 
+PLAYLIST_TTL = 300  # a playlist made mid-conversation should show up without a restart
+_cached: dict = {"at": 0.0, "value": []}
+
+
 def _playlists(limit: int = 200) -> list[dict]:
-    """Every playlist the user owns or follows. Spotify sends the odd null row."""
-    return [p for p in _pages("/me/playlists", limit) if p]
+    """Every playlist the user owns or follows. Spotify sends the odd null row.
+
+    Cached for a few minutes: two requests each time, and this is now read on every
+    name resolution and once per agent turn to tell the model what the user's
+    playlists are called.
+    """
+    if _cached["value"] and time.time() - _cached["at"] < PLAYLIST_TTL:
+        return _cached["value"][:limit]
+    fresh = [p for p in _pages("/me/playlists", 200) if p]
+    _cached.update(at=time.time(), value=fresh)
+    return fresh[:limit]
+
+
+@app.tool()
+def playlist_names() -> list[str]:
+    """The names of the user's playlists. Cheap: no track data, just the titles."""
+    return [p["name"] for p in _playlists()]
 
 
 _IS_ID = re.compile(r"[0-9A-Za-z]{22}").fullmatch

@@ -58,10 +58,8 @@ whenever the request is about a feeling. To measure something that already exist
 rather than find something new, use playlist_vibe: it takes a playlist name and reports
 what that playlist actually sounds like.
 
-If the user names something and you cannot tell what it is, look instead of deciding.
-Call my_playlists: a name someone uses in conversation is usually one of their
-playlists, because that is what people name. Do not ask the user which it is, and do
-not search for it as a song title.
+A name from the list below is a playlist, not a song. Read it with playlist_tracks or
+measure it with playlist_vibe; never search for it as a title.
 
 When the request is about what a song *says* rather than what it is called, use
 search_by_lyrics instead. It reads the words of every candidate, so it is slower and
@@ -93,6 +91,26 @@ is thin rather than dressing a guess as a finding.
 
 Only create a playlist when the user asks for one. When you build one, say what you
 were aiming for in its description."""
+
+
+async def _prompt(session) -> str:
+    """SYSTEM, plus what the user's playlists are actually called.
+
+    Three system-prompt wordings failed to stop the model searching for "Unmaad" as a
+    song title, because no wording can: nothing in its context said the word was a
+    playlist. This is 346 tokens against ~2.3k of tool schemas, and it removes the
+    guess rather than trying to improve it. The list is cached in the server, so this
+    is two requests per conversation, not per turn.
+    """
+    try:
+        res = await session.call_tool("playlist_names", {})
+        # FastMCP 1.x sends a list return as one text block per item, not as JSON
+        names = [c.text for c in res.content if getattr(c, "text", "").strip()]
+    except Exception:  # noqa: BLE001 - a prompt garnish must never fail a turn
+        return SYSTEM
+    if not names:
+        return SYSTEM
+    return f"{SYSTEM}\n\nThe user's playlists are called: {', '.join(names)}."
 
 
 def _llm(model: str | None = None):
@@ -190,7 +208,7 @@ async def build(checkpointer=None, model: str | None = None, gated: bool = False
         yield create_react_agent(
             _llm(model),
             tools,
-            prompt=SYSTEM,
+            prompt=await _prompt(session),
             checkpointer=checkpointer,
             pre_model_hook=_shrink_old_tools,
             # pause before the tool node so a mode can hold calls for approval
@@ -332,6 +350,12 @@ async def main(question: str) -> None:
 
 
 async def _selfcheck() -> None:
+    # the prompt must carry the playlist names, silently falling back to SYSTEM if the
+    # tool is renamed or its return shape changes, which is exactly what would go unnoticed
+    async with MultiServerMCPClient(SERVERS).session("spotify") as session:
+        prompt = await _prompt(session)
+    assert prompt != SYSTEM, "playlist names did not reach the prompt"
+    assert prompt.startswith(SYSTEM), "SYSTEM must survive intact"
     tools = await MultiServerMCPClient(SERVERS).get_tools()
     names = sorted(t.name for t in tools)
     # a subset, not an exact list: adding a tool to the server should not fail this

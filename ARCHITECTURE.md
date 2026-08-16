@@ -144,6 +144,17 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-17** — The agent is told what the user's playlists are called, and the
+  bare-name problem goes away. "compare Unmaad and Ni || Ti" used to spend ten calls
+  searching them as song titles before trying `my_playlists`; it now goes straight to
+  two `playlist_vibe` calls. Three system-prompt wordings had failed at this, one
+  leaving it flailing, one making it ask the user rather than look, one making it give
+  up with no tool call at all. None could have worked: the model was not making a bad
+  decision, it had no way to know the word was a playlist. 346 tokens of names against
+  roughly 2,300 of tool schemas buys the fact outright. The lesson is the one this
+  codebase keeps relearning, that a wrong tool choice is usually missing information
+  rather than a missing instruction, and prompt wording is the last thing to reach for.
+  `_playlists` is cached for five minutes, which also speeds every name resolution.
 - **2026-08-17** — Audio features are back, from ReccoBeats rather than Spotify, and
   genres from MusicBrainz. `search_by_feel`'s three numbers used to append one keyword
   and nothing else; they now over-fetch and rank the candidates by measured distance
