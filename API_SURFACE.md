@@ -106,7 +106,57 @@ server still claiming acoustic matching is either grandfathered or guessing.
 
 **Analysis** (the interesting column): playlist vibe, artist deep dive, artist
 network, library stats, query library, sync library to a local index. This is the only
-group that overlaps with what this project is for.
+group that overlaps with what this project is for. Section 4 takes each one apart.
+
+## 4. The analysis tools, checked one by one
+
+Researched and probed 2026-08-17. Three of the six are impossible here, two are free,
+and one turns out to reopen a door this project had written off.
+
+| Tool | Verdict here |
+|---|---|
+| `spotify_artist_network` | **Impossible.** Built on `/related-artists`, which is 403 for us. That server is grandfathered or its README is stale. |
+| `spotify_playlist_vibe` | **Impossible as built.** Its own README says it "estimates energy from genre data rather than audio-features", and genres left the artist object in Feb 2026. Possible against a third-party genre source, see below. |
+| `spotify_artist_deep_dive` | **Half.** `artist_albums` works; `/artists/{id}/top-tracks` is 403 and the artist object is down to a name and images. |
+| `spotify_sync_library` | **Free.** Everything it indexes is already reachable. |
+| `spotify_library_stats` | **Free.** Pure aggregation over the above. |
+| `spotify_query_library` | **Free.** Filtering over a local index, no endpoint at all. |
+
+### The find: audio features are available again, from someone else (now built)
+
+[ReccoBeats](https://api.reccobeats.com) answers with **Spotify track ids** and returns
+the exact schema Spotify deprecated: `valence`, `energy`, `acousticness`,
+`danceability`, `instrumentalness`, `liveness`, `speechiness`, `loudness`, `tempo`,
+`key`, `mode`. No key, no account.
+
+Probed against this account's real tracks:
+
+- Batch cap **40 ids**; 50 answers `400 size must be...`.
+- 49 tracks in **0.3s** over two requests.
+- Coverage is **not** universal, and the gap is not random:
+
+| Sample | Covered |
+|---|---|
+| A US rap playlist | 45/46 (98%) |
+| A Sufi and Bollywood playlist | 13/15 (87%) |
+| This account's top tracks, Hindi-heavy | 13/20 (65%) |
+
+The catalogue is Western-biased, and this user's listening is not, so a third of the
+most relevant tracks have no features. Any use of it has to treat a miss as normal
+rather than as an error.
+
+That matters because `search_by_feel`'s three numbers currently only nudge one keyword
+onto a text search: they cannot filter, because there was nothing to filter on. With
+ReccoBeats they could rank a candidate list for real. Whether that is worth an extra
+request per search, given a third of the results would be unranked, is the open
+question. Measure before building.
+
+**Built 2026-08-17.**  ranks by real features whenever a dial is moved
+off 0.5, and  reports what a playlist actually sounds like.
+
+[MusicBrainz](https://musicbrainz.org/ws/2/artist) is the matching answer for genres:
+keyless, and it returned eight usable tags for a test artist. It is the only route to
+anything genre-shaped now that Spotify sends none.
 
 ## 3. What is worth taking
 

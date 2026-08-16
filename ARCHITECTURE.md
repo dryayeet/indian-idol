@@ -144,6 +144,19 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-17** — Audio features are back, from ReccoBeats rather than Spotify, and
+  genres from MusicBrainz. `search_by_feel`'s three numbers used to append one keyword
+  and nothing else; they now over-fetch and rank the candidates by measured distance
+  whenever a dial moves off 0.5, which costs nothing when they are all left alone. New
+  `playlist_vibe` reports what a playlist actually sounds like: it separates Unmaad
+  (acousticness 0.44, danceability 0.56, "filmi, world fusion") from Ni || Ti
+  (acousticness 0.20, danceability 0.74, "conscious hip hop") on measurement rather
+  than on titles. Coverage is Western-biased, 98% on a US rap playlist against 65% on
+  Hindi-heavy top tracks, so an unmeasured track sorts after the ranked ones instead of
+  being dropped, and `measured` is returned so the model can weigh the average.
+  `playlist_tracks` now returns the playlist's title alongside its tracks: given a bare
+  list, the model announced that "Unmaad" was really called "Bhar Do Jholi Meri", which
+  is its first track.
 - **2026-08-17** — The whole reachable surface probed and written down in
   API_SURFACE.md, 37 live requests rather than a reading of the documentation. Six
   more tools from what answered: `liked_songs`, `saved_albums`, `top_artists`,

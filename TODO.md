@@ -45,6 +45,20 @@ Done section records what was actually finished.
   cannot revise one, so "drop the last three" and "put the slow ones at the end" are
   both impossible. The most-requested thing every other Spotify MCP server has and
   this one does not. See API_SURFACE.md.
+- [ ] **A bare name still defeats the agent.** "compare Unmaad and Ni || Ti" makes it
+  search for them as song titles for ten calls before trying `my_playlists`. Three
+  different system-prompt wordings were tried: one left it flailing, one made it ask
+  the user instead of looking, one made it give up with no tool call at all. Prompting
+  is the wrong instrument. The structural fix that worked twice before is to remove the
+  choice: resolve names inside the tool, as `playlist_tracks` and `album_tracks` now
+  do. `search_by_feel` cannot do that, since it cannot know a name is a playlist, so
+  the answer is probably a single `find(name)` tool that says what a name refers to.
+- [ ] **It second-guesses a playlist name.** Asked for a playlist called "vibe test -
+  delete me" it refused, calling the name "accidental or placeholder". Naming is the
+  user's business.
+- [ ] **Measure whether feature ranking actually helps.** It is built and it clearly
+  orders by valence, but no one has checked that the ranked answer is a better answer
+  on real requests. Add it to the bake-off rubric rather than trusting the numbers.
 - [ ] **One library summary instead of four lists.** The best idea in the other MCP
   servers (`spotify_library_stats`, `spotify_query_library`): counts, top artists by
   saved-track count, the spread of release years, in one call. The model currently has
@@ -141,6 +155,10 @@ Done section records what was actually finished.
 
 ## Done
 
+- [X] **2026-08-17** — Audio features again, from ReccoBeats, and genres from
+  MusicBrainz. `search_by_feel` ranks by measured distance when a dial is moved;
+  `playlist_vibe` measures a playlist. Coverage is Western-biased, so unmeasured
+  tracks sort last rather than vanish, and the count is reported.
 - [X] **2026-08-17** — `followed_artists` and `saved_podcasts`, with the
   `user-follow-read` and `user-library-read` scopes. Search history stays out of
   reach: Spotify has never exposed it. Blends too, permanently.

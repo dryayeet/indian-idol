@@ -175,6 +175,56 @@ def _feel_query(description: str, valence: float, energy: float, acousticness: f
     return f"{description} {high if value > 0.5 else low}"
 
 
+RECCO = "https://api.reccobeats.com/v1/audio-features"
+RECCO_BATCH = 40  # 50 answers 400 "size must be ..."
+FEEL_FLOOR = 0.15  # below this a number is not a request, it is the middle of the dial
+
+
+def _features(tracks: list[dict]) -> dict[str, dict]:
+    """Audio features by track id, from ReccoBeats, keyed on the Spotify id.
+
+    Spotify deprecated /audio-features for new apps on 2024-11-27; ReccoBeats answers
+    the same schema from the same track ids. Coverage is not complete and the gap is
+    Western-biased: 98% on a US rap playlist here, 65% on Hindi-heavy top tracks. A
+    missing track is ordinary, so it is simply absent from the result, and an outage
+    at a third party must never fail a Spotify search.
+    """
+    ids = [t["url"].rsplit("/", 1)[-1] for t in tracks]
+    out: dict[str, dict] = {}
+    for i in range(0, len(ids), RECCO_BATCH):
+        try:
+            r = _http.get(RECCO, params={"ids": ",".join(ids[i : i + RECCO_BATCH])}, timeout=20)
+            r.raise_for_status()
+        except httpx.HTTPError:
+            continue
+        for x in r.json().get("content") or []:
+            out[x["href"].rsplit("/", 1)[-1]] = x
+    return out
+
+
+def _asked_for(valence: float, energy: float, acousticness: float) -> dict[str, float]:
+    """The axes the caller actually moved. All three at 0.5 means "no preference"."""
+    axes = {"valence": valence, "energy": energy, "acousticness": acousticness}
+    return {k: v for k, v in axes.items() if abs(v - 0.5) >= FEEL_FLOOR}
+
+
+def _by_feel(tracks: list[dict], wanted: dict[str, float], feats=None) -> list[dict]:
+    """Sort by distance from the requested mood. Tracks with no features keep their order.
+
+    feats is passed in only by the self-check, so the sort can be tested without a network.
+    """
+    feats = _features(tracks) if feats is None else feats
+
+    def key(item: tuple[int, dict]) -> tuple[int, float]:
+        i, t = item
+        f = feats.get(t["url"].rsplit("/", 1)[-1])
+        if not f:  # unmeasured, so it cannot be ranked: after the ranked ones, in search order
+            return (1, i)
+        return (0, sum(abs(f[k] - v) for k, v in wanted.items()))
+
+    return [t for _, t in sorted(enumerate(tracks), key=key)]
+
+
 @app.tool()
 def search_by_feel(
     description: str,
@@ -193,19 +243,26 @@ def search_by_feel(
     valence: 0 sad to 1 happy. energy: 0 calm to 1 intense.
     acousticness: 0 produced to 1 acoustic. Leave one at 0.5 if it does not matter.
 
+    Moving any of the three away from 0.5 makes this measure the candidates and rank
+    them by how close they actually sound, so the numbers are worth setting.
+
     Results are filtered to tracks whose title or artist actually carries a word
     from the description, because Spotify answers even a nonsense query with
     arbitrary tracks. An empty list therefore means nothing matched: try different
     words rather than presenting nothing.
     """
-    # ponytail: keyword search, not /v1/recommendations + target_valence — that endpoint and
-    # /v1/audio-features were deprecated for new apps on 2024-11-27 and return 403. Swap back
-    # to real feature targeting only if this app gets extended-mode access.
+    # Spotify's own /audio-features and /recommendations are 403 for new apps since
+    # 2024-11-27, so the description still does the searching. ReccoBeats then ranks
+    # what came back, which is the part that used to be impossible.
     if not description.strip():
         raise ValueError("description is required — say what the music should feel like")
-    found = _search_tracks(_feel_query(description, valence, energy, acousticness), limit)
+    wanted = _asked_for(valence, energy, acousticness)
+    # over-fetch only when there is something to rank by, since each page is a request
+    want = min(limit * 3, RECCO_BATCH) if wanted else limit
+    found = _search_tracks(_feel_query(description, valence, energy, acousticness), want)
     terms = _terms(description)
-    return [t for t in found if _relevant(t, terms)] if terms else found
+    hits = [t for t in found if _relevant(t, terms)] if terms else found
+    return (_by_feel(hits, wanted) if wanted else hits)[:limit]
 
 
 _STOP = {
@@ -369,6 +426,12 @@ def _playlists(limit: int = 200) -> list[dict]:
 _IS_ID = re.compile(r"[0-9A-Za-z]{22}").fullmatch
 
 
+def _playlist_of(playlist: str) -> str:
+    """Whatever the caller passed, as a playlist id."""
+    pid = _bare_id(playlist)
+    return pid if _IS_ID(pid) else _resolve(pid)
+
+
 def _find(kind: str, name: str) -> str:
     """A name to an id, through search. The model is handed names, so it passes names."""
     found = _call("GET", "/search", params={"q": name, "type": kind, "limit": 1})
@@ -417,17 +480,20 @@ def my_playlists(limit: int = 200) -> list[dict]:
 
 
 @app.tool()
-def playlist_tracks(playlist: str, limit: int = 200) -> list[dict]:
+def playlist_tracks(playlist: str, limit: int = 200) -> dict:
     """Read the tracks in a playlist, by name. Also takes an id, URI, or link.
 
     Pass the name the user said, exactly as they said it: this resolves it. There is no
     need to call my_playlists first, and casing and punctuation do not have to match.
+
+    The playlist's real name comes back with the tracks. It is the playlist's title, not
+    the first track's; do not rename it from what is inside it.
     """
     # a name is resolved here rather than left to the model, which was calling this
     # with "Unmaad", getting a 404, and asking the user for a link instead of looking
     # the name up in my_playlists
-    pid = _bare_id(playlist)
-    path = f"/playlists/{pid if _IS_ID(pid) else _resolve(pid)}/items"
+    pid = _playlist_of(playlist)
+    path = f"/playlists/{pid}/items"
     try:
         items = _pages(path, limit)
     except RuntimeError as e:
@@ -443,7 +509,85 @@ def playlist_tracks(playlist: str, limit: int = 200) -> list[dict]:
     # the same Feb 2026 migration renamed each row's payload from "track" to "item".
     # Reading "track" gives an empty list for every playlist. Podcast episodes sit in
     # the same field and carry no artists, so type has to be checked.
-    return [_track(i["item"]) for i in items if (i.get("item") or {}).get("type") == "track"]
+    return {
+        # the model announced that "Unmaad" was "actually titled Bhar Do Jholi Meri", its
+        # first track, because a bare list gave it nothing else to call the playlist
+        "playlist": _call("GET", f"/playlists/{pid}").get("name"),
+        "tracks": [_track(i["item"]) for i in items if (i.get("item") or {}).get("type") == "track"],
+    }
+
+
+MB = "https://musicbrainz.org/ws/2/artist"
+MB_AGENT = "spotify-agent/0.1 (https://github.com/)"
+MB_ARTISTS = 5  # MusicBrainz asks for one request a second, so this is 5s of waiting
+
+
+def _genres(names: list[str]) -> list[str]:
+    """Genre tags for artists, from MusicBrainz, commonest first.
+
+    Spotify stopped sending genres in the Feb 2026 migration and the batch lookup that
+    carried them is gone, so this is the only remaining route to anything genre-shaped.
+    """
+    counts: dict[str, int] = {}
+    for i, name in enumerate(names[:MB_ARTISTS]):
+        if i:
+            time.sleep(1)  # their published rate limit, not a guess
+        try:
+            r = _http.get(
+                MB,
+                params={"query": name, "fmt": "json", "limit": 1},
+                headers={"User-Agent": MB_AGENT},
+                timeout=20,
+            )
+            r.raise_for_status()
+            artists = r.json().get("artists") or []
+        except (httpx.HTTPError, ValueError):
+            continue
+        if not artists:
+            continue
+        for tag in (artists[0].get("tags") or []) + (artists[0].get("genres") or []):
+            counts[tag["name"]] = counts.get(tag["name"], 0) + int(tag.get("count") or 1)
+    return sorted(counts, key=counts.get, reverse=True)[:10]
+
+
+@app.tool()
+def playlist_vibe(playlist: str, genres: bool = True) -> dict:
+    """Measure how a playlist actually sounds: its mood, its spread, and its genres.
+
+    Takes a playlist name, id, URI, or link. Returns the mean and the range of valence,
+    energy, acousticness and danceability over the tracks that could be measured, plus
+    the artists it leans on. Set genres to false to skip the slower genre lookup.
+
+    `measured` says how many tracks carried features. Coverage is weaker outside the
+    Western catalogue, so read the averages against that number, not as the whole truth.
+    """
+    read = playlist_tracks(playlist)
+    name, tracks = read["playlist"], read["tracks"]
+    feats = _features(tracks)
+    axes = ("valence", "energy", "acousticness", "danceability")
+    values = {a: [f[a] for f in feats.values() if f.get(a) is not None] for a in axes}
+    mood = {
+        a: {
+            "mean": round(sum(v) / len(v), 3),
+            "low": round(min(v), 3),
+            "high": round(max(v), 3),
+        }
+        for a, v in values.items()
+        if v
+    }
+    top: dict[str, int] = {}
+    for t in tracks:
+        for who in t["artist"].split(", "):  # not `name`: that holds the playlist's own
+            top[who] = top.get(who, 0) + 1
+    leaders = sorted(top, key=top.get, reverse=True)[:MB_ARTISTS]
+    return {
+        "playlist": name,
+        "tracks": len(tracks),
+        "measured": len(feats),
+        "mood": mood or "no track in this playlist could be measured",
+        "artists": leaders,
+        "genres": _genres(leaders) if genres else [],
+    }
 
 
 @app.tool()
@@ -610,6 +754,16 @@ if __name__ == "__main__":
         # a bare name must not be mistaken for an id; a real id must not be looked up
         assert _IS_ID("4hWbZFjKdKAZWMTiTYUW41") and not _IS_ID("Unmaad")
         assert not _IS_ID("Ni || Ti") and not _IS_ID("my 22 character playlist")
+        # the three dials: only a moved one is a request, and 0.5 must cost no request
+        assert _asked_for(0.5, 0.5, 0.5) == {}
+        assert _asked_for(0.5, 0.6, 0.5) == {}, "0.1 is inside the dead zone"
+        assert _asked_for(0.05, 0.5, 0.9) == {"valence": 0.05, "acousticness": 0.9}
+        sad = {"name": "s", "artist": "a", "url": "https://open.spotify.com/track/AAA"}
+        glad = {"name": "g", "artist": "a", "url": "https://open.spotify.com/track/BBB"}
+        mute = {"name": "m", "artist": "a", "url": "https://open.spotify.com/track/CCC"}
+        known = {"AAA": {"valence": 0.1}, "BBB": {"valence": 0.9}}  # CCC unmeasured
+        assert _by_feel([glad, mute, sad], {"valence": 0.0}, known) == [sad, glad, mute]
+        assert _by_feel([sad, mute, glad], {"valence": 1.0}, known) == [glad, sad, mute]
         assert _terms("Songs about leaving my hometown") == ["leaving", "hometown"]
         keep = {"name": "Leaving Home", "artist": "Indian Ocean"}
         junk = {"name": "Dame Tu Cosita", "artist": "El Chombo"}

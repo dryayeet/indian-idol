@@ -1,7 +1,7 @@
 # Spotify MCP Server
 
 This is the Spotify tool server for the autonomous Spotify agent.
-It is an MCP server. It gives an agent seventeen tools for the Spotify Web API and LRCLIB.
+It is an MCP server. It gives an agent eighteen tools for the Spotify Web API and LRCLIB.
 For the intent, read [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md).
 For what is built and why, read [ARCHITECTURE.md](ARCHITECTURE.md).
 For what is still owed, read [TODO.md](TODO.md).
@@ -20,7 +20,8 @@ For multi-model plans, read [MULTI_MODEL.md](MULTI_MODEL.md).
 | `listening_lyrics(source, limit, chars)` | Get the lyrics of recent or top tracks in one call. |
 | `search_by_lyrics(phrase, search_terms, candidates, limit)` | Find tracks whose lyrics match. Slower. Can return nothing. |
 | `my_playlists(limit)` | List the playlists the user owns or follows. |
-| `playlist_tracks(playlist, limit)` | Read the tracks in a playlist, by name, id, URI, or link. |
+| `playlist_tracks(playlist, limit)` | Read a playlist by name, id, URI, or link. Returns its title and tracks. |
+| `playlist_vibe(playlist, genres)` | Measure how a playlist sounds: mood, spread, artists, genres. |
 | `followed_artists(limit)` | Artists the user follows. Names only. |
 | `top_artists(limit, time_range)` | Most-played artists. |
 | `liked_songs(limit)` | The user's Liked Songs. |
@@ -162,6 +163,13 @@ The agent test lists the tools through MCP. It does not call the language model.
 - Only the user's own playlists can be read. Playlists that Spotify owns,
   such as a Blend, a Daily Mix, or Discover Weekly, are not in the list and
   answer 404 by id. Another user's playlist answers 403. This is permanent.
+- Spotify stopped serving audio features in 2024, so `search_by_feel` and
+  `playlist_vibe` get them from ReccoBeats instead. Coverage is not complete
+  and the gap favours the Western catalogue: 98 percent on a US rap playlist
+  here, 65 percent on Hindi-heavy top tracks. A missing track is normal.
+- Genres come from MusicBrainz, which asks for one request each second.
+  `playlist_vibe` therefore reads five artists and takes about seven seconds.
+  Pass `genres=false` for a result in one second.
 - Spotify no longer sends an artist's genres, popularity, or follower count,
   and it no longer sends a podcast's publisher.
 - The connection to `accounts.spotify.com` can fail.
