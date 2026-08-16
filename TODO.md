@@ -40,6 +40,25 @@ Done section records what was actually finished.
 - [ ] **Web searches for better context engineering** of tool usage and history
   passing. Some of this is now done (leaner tool payloads, stubbed old tool
   results), but the reading has not been done systematically.
+- [ ] **Playlist writes beyond create.** `PUT /playlists/{id}/items` reorders,
+  `DELETE` removes, `PUT /playlists/{id}` renames. The agent can build a playlist but
+  cannot revise one, so "drop the last three" and "put the slow ones at the end" are
+  both impossible. The most-requested thing every other Spotify MCP server has and
+  this one does not. See API_SURFACE.md.
+- [ ] **One library summary instead of four lists.** The best idea in the other MCP
+  servers (`spotify_library_stats`, `spotify_query_library`): counts, top artists by
+  saved-track count, the spread of release years, in one call. The model currently has
+  to read `liked_songs`, `saved_albums`, `followed_artists` and `top_tracks` separately
+  and hold all four.
+- [ ] **Deduplicate and merge playlists.** Pure local logic over data already
+  reachable, no new endpoint. `_dedupe` already exists.
+- [ ] **Playback control**, if the agent should act on a mood rather than only
+  describe it. Needs `user-modify-playback-state`, Spotify Premium, and a live device,
+  so it cannot be covered by a check that runs anywhere.
+- [ ] **Say when a request cannot be met, rather than substituting.** Asked to look at
+  "Your Top Songs 2024", the agent quietly called `top_tracks` and analysed that
+  instead, without saying the playlist was unreachable. The answer was useful and the
+  substitution was reasonable, but it was not disclosed.
 - [ ] **Select the tools, rather than sending all of them every call.** All eleven
   schemas go into every request, and the number only grows: the psych server and
   per-user auth both add more. Retrieve the few that fit the request instead, either

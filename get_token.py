@@ -21,7 +21,8 @@ SCOPES = (
     "playlist-modify-private "
     "playlist-read-private "  # needed to read any playlist's tracks, public ones included
     "user-follow-read "  # followed_artists
-    "user-library-read"  # saved_podcasts
+    "user-library-read "  # liked_songs, saved_albums, saved_podcasts
+    "user-read-playback-state"  # now_playing
 )
 ENV = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 

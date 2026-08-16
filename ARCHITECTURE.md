@@ -144,6 +144,13 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-17** — The whole reachable surface probed and written down in
+  API_SURFACE.md, 37 live requests rather than a reading of the documentation. Six
+  more tools from what answered: `liked_songs`, `saved_albums`, `top_artists`,
+  `album_tracks`, `artist_albums`, `now_playing`. The probe also found that the
+  limit-10 cap is not only on `/search`: `/artists/{id}/albums` shares it, so `_pages`
+  takes a page size. Seventeen tools now, which makes the tool-selection item in the
+  TODO more pressing rather than less.
 - **2026-08-17** — Paging, two new tools, and a third instance of the same rename.
   `playlist_tracks` read the first 50 tracks and silently dropped the rest, so a
   240-track playlist was analysed from a third of itself. One `_pages` helper now

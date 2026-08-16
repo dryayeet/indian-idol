@@ -4,6 +4,9 @@ Env: SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REFRESH_TOKEN
 Scopes the refresh token needs:
     user-read-recently-played user-top-read playlist-modify-private
     playlist-read-private   (required to read any playlist's contents, even public ones)
+    user-follow-read user-library-read user-read-playback-state
+
+What the API still answers, and what it no longer does: API_SURFACE.md
 
 Run:  python spotify_mcp.py           (stdio)
 Check: python spotify_mcp.py --selfcheck
@@ -330,8 +333,11 @@ def listening_lyrics(source: str = "recent", limit: int = 12, chars: int = 800) 
     return {"tracks": tracks, "missing": missing}
 
 
-def _playlist_id(item: str) -> str:
-    """Take a playlist id, URI, or open.spotify.com link and return the id."""
+def _bare_id(item: str) -> str:
+    """Take an id, a URI, or an open.spotify.com link, and return the id.
+
+    Playlists, albums and artists all encode ids the same way, so this serves all three.
+    """
     item = item.strip().rstrip("/")
     if item.startswith("spotify:"):
         return item.rsplit(":", 1)[-1]
@@ -340,13 +346,17 @@ def _playlist_id(item: str) -> str:
     return item
 
 
-def _pages(path: str, limit: int, **params) -> list[dict]:
-    """Items up to limit, 50 at a time. Every list endpoint here caps a page at 50."""
+def _pages(path: str, limit: int, page: int = 50, **params) -> list[dict]:
+    """Items up to limit, `page` at a time.
+
+    Most list endpoints cap a page at 50, but /search and /artists/{id}/albums cap at
+    10 and answer 400 "Invalid limit" for anything larger, so the size is a parameter.
+    """
     out: list[dict] = []
     while len(out) < limit:
-        page = _call("GET", path, params={"limit": 50, "offset": len(out), **params})["items"]
-        out += page
-        if len(page) < 50:  # last page
+        got = _call("GET", path, params={"limit": page, "offset": len(out), **params})["items"]
+        out += got
+        if len(got) < page:  # last page
             break
     return out[:limit]
 
@@ -357,6 +367,15 @@ def _playlists(limit: int = 200) -> list[dict]:
 
 
 _IS_ID = re.compile(r"[0-9A-Za-z]{22}").fullmatch
+
+
+def _find(kind: str, name: str) -> str:
+    """A name to an id, through search. The model is handed names, so it passes names."""
+    found = _call("GET", "/search", params={"q": name, "type": kind, "limit": 1})
+    items = (found.get(f"{kind}s") or {}).get("items") or []
+    if not items:
+        raise RuntimeError(f"no {kind} called {name!r}")
+    return items[0]["id"]
 
 
 def _resolve(name: str) -> str:
@@ -407,7 +426,7 @@ def playlist_tracks(playlist: str, limit: int = 200) -> list[dict]:
     # a name is resolved here rather than left to the model, which was calling this
     # with "Unmaad", getting a 404, and asking the user for a link instead of looking
     # the name up in my_playlists
-    pid = _playlist_id(playlist)
+    pid = _bare_id(playlist)
     path = f"/playlists/{pid if _IS_ID(pid) else _resolve(pid)}/items"
     try:
         items = _pages(path, limit)
@@ -445,6 +464,87 @@ def followed_artists(limit: int = 100) -> list[dict]:
         if not after or not page["items"]:
             break
     return [{"name": a["name"], "url": a["external_urls"]["spotify"]} for a in out[:limit]]
+
+
+@app.tool()
+def top_artists(limit: int = 20, time_range: str = "short_term") -> list[dict]:
+    """Most-played artists. time_range: short_term (~4 weeks), medium_term, long_term."""
+    params = {"limit": min(limit, 50), "time_range": time_range}
+    return [
+        {"name": a["name"], "url": a["external_urls"]["spotify"]}
+        for a in _call("GET", "/me/top/artists", params=params)["items"]
+    ]
+
+
+@app.tool()
+def album_tracks(album: str) -> dict:
+    """The tracks on an album, with its year. Takes an album name, id, URI, or link.
+
+    Pass the album name the user said. Adding the artist to it sharpens the search.
+    """
+    aid = _bare_id(album)
+    if not _IS_ID(aid):
+        aid = _find("album", aid)
+    a = _call("GET", f"/albums/{aid}")
+    return {
+        "name": a["name"],
+        "artist": ", ".join(x["name"] for x in a["artists"]),
+        "released": a.get("release_date"),
+        "tracks": [_track(t) for t in _pages(f"/albums/{aid}/tracks", 100)],
+    }
+
+
+@app.tool()
+def artist_albums(artist: str, limit: int = 30) -> list[dict]:
+    """An artist's releases. Takes an artist name, id, URI, or link."""
+    aid = _bare_id(artist)
+    if not _IS_ID(aid):
+        aid = _find("artist", aid)
+    return [
+        {
+            "name": a["name"],
+            "released": a.get("release_date"),
+            "type": a.get("album_type"),
+            "tracks": a.get("total_tracks"),
+            "url": a["external_urls"]["spotify"],
+        }
+        for a in _pages(f"/artists/{aid}/albums", limit, page=10)
+    ]
+
+
+@app.tool()
+def now_playing() -> dict:
+    """What is playing right now, if anything. Needs the user-read-playback-state scope."""
+    r = _call("GET", "/me/player/currently-playing")
+    if not r or not r.get("item"):
+        return {"playing": False}
+    return _track(r["item"]) | {"playing": bool(r.get("is_playing"))}
+
+
+@app.tool()
+def liked_songs(limit: int = 200) -> list[dict]:
+    """The user's Liked Songs, newest first. Their library proper, not a playlist."""
+    return [
+        _track(i["track"]) | {"added": (i.get("added_at") or "")[:10]}
+        for i in _pages("/me/tracks", limit)
+        if i.get("track")
+    ]
+
+
+@app.tool()
+def saved_albums(limit: int = 100) -> list[dict]:
+    """Albums in the user's library. A saved album is a stronger signal than a liked song."""
+    return [
+        {
+            "name": a["album"]["name"],
+            "artist": ", ".join(x["name"] for x in a["album"]["artists"]),
+            "released": a["album"].get("release_date"),
+            "tracks": a["album"].get("total_tracks"),
+            "url": a["album"]["external_urls"]["spotify"],
+        }
+        for a in _pages("/me/albums", limit)
+        if a.get("album")
+    ]
 
 
 @app.tool()
@@ -501,9 +601,9 @@ if __name__ == "__main__":
         assert _uri("1bMkimTb47umgNP6xCi4A1") == "spotify:track:1bMkimTb47umgNP6xCi4A1"
         assert _uri("spotify:track:abc") == "spotify:track:abc"
         assert _uri("https://open.spotify.com/track/xyz?si=1") == "spotify:track:xyz"
-        assert _playlist_id("spotify:playlist:PID") == "PID"
-        assert _playlist_id("https://open.spotify.com/playlist/PID?si=2") == "PID"
-        assert _playlist_id(" PID ") == "PID"
+        assert _bare_id("spotify:playlist:PID") == "PID"
+        assert _bare_id("https://open.spotify.com/playlist/PID?si=2") == "PID"
+        assert _bare_id(" PID ") == "PID"
         # a bare name must not be mistaken for an id; a real id must not be looked up
         assert _IS_ID("4hWbZFjKdKAZWMTiTYUW41") and not _IS_ID("Unmaad")
         assert not _IS_ID("Ni || Ti") and not _IS_ID("my 22 character playlist")

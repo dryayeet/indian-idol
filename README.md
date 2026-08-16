@@ -1,11 +1,12 @@
 # Spotify MCP Server
 
 This is the Spotify tool server for the autonomous Spotify agent.
-It is an MCP server. It gives an agent eleven tools for the Spotify Web API and LRCLIB.
+It is an MCP server. It gives an agent seventeen tools for the Spotify Web API and LRCLIB.
 For the intent, read [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md).
 For what is built and why, read [ARCHITECTURE.md](ARCHITECTURE.md).
 For what is still owed, read [TODO.md](TODO.md).
 For the model choice, read [MODEL_BAKEOFF.md](MODEL_BAKEOFF.md).
+For what the API still allows, read [API_SURFACE.md](API_SURFACE.md).
 For multi-model plans, read [MULTI_MODEL.md](MULTI_MODEL.md).
 
 ## Tools
@@ -21,6 +22,12 @@ For multi-model plans, read [MULTI_MODEL.md](MULTI_MODEL.md).
 | `my_playlists(limit)` | List the playlists the user owns or follows. |
 | `playlist_tracks(playlist, limit)` | Read the tracks in a playlist, by name, id, URI, or link. |
 | `followed_artists(limit)` | Artists the user follows. Names only. |
+| `top_artists(limit, time_range)` | Most-played artists. |
+| `liked_songs(limit)` | The user's Liked Songs. |
+| `saved_albums(limit)` | Albums in the user's library. |
+| `album_tracks(album)` | The tracks on an album. |
+| `artist_albums(artist, limit)` | An artist's releases, by name or id. |
+| `now_playing()` | What is playing right now. |
 | `saved_podcasts(limit)` | Podcasts in the user's library. |
 | `create_playlist(name, track_uris, description)` | Make a private playlist and add the tracks. |
 
@@ -36,6 +43,7 @@ For multi-model plans, read [MULTI_MODEL.md](MULTI_MODEL.md).
 | `bakeoff.py` | Scores models on the agent's job. Run `python bakeoff.py`. |
 | `MODEL_BAKEOFF.md` | The model results and what they mean. |
 | `MULTI_MODEL.md` | Plans for using more than one model. |
+| `API_SURFACE.md` | Every endpoint that still answers, and what other Spotify MCP servers do. |
 | `ui_check.py` | Drives the web interface headlessly. Run `python ui_check.py`. |
 | `run_tool.py` | A command-line client. Use it to call one tool. |
 | `streamlit_app.py` | A web interface. It shows all the tools as forms. |
@@ -92,7 +100,8 @@ Use `.env.example` as the pattern.
    Do not use `localhost`. Spotify refuses it.
 4. Get a refresh token with these scopes:
    `user-read-recently-played`, `user-top-read`, `playlist-modify-private`,
-   `playlist-read-private`, `user-follow-read`, and `user-library-read`.
+   `playlist-read-private`, `user-follow-read`, `user-library-read`,
+   and `user-read-playback-state`.
    Run `python get_token.py` to do this.
 5. Put the three values in the `.env` file.
 
