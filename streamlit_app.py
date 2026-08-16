@@ -155,13 +155,13 @@ def _continue(approve: bool, key: str) -> None:
 def _agent_panel() -> None:
     st.subheader("Chat")
     st.caption(
-        f"LangGraph ReAct loop over the MCP tools, {agent.PROVIDER} `{agent.MODEL}`"
+        f"LangGraph ReAct loop over the MCP tools, model `{agent.MODEL}`"
     )
 
     key = os.environ.get(agent.KEY_VAR)
     if not key:
         key = st.text_input(
-            f"{agent.PROVIDER} API key",
+            "OpenRouter API key",
             type="password",
             help=f"Or put {agent.KEY_VAR} in .env and restart.",
         )
@@ -218,7 +218,7 @@ def _agent_panel() -> None:
         _command(question)
         return
     if not key:
-        st.warning(f"A {agent.PROVIDER} key is needed to run the agent.")
+        st.warning("An OpenRouter key is needed to run the agent.")
         return
     os.environ[agent.KEY_VAR] = key  # agent._llm() reads it at call time
 

@@ -65,8 +65,9 @@ Done section records what was actually finished.
   tracks match the words and miss the request. A cheap second model scoring each
   candidate, with no access to the conversation, is the verifier pattern. See
   [MULTI_MODEL.md](MULTI_MODEL.md).
-- [ ] **Provider failover on 402 and 429.** The provider is chosen once at import.
-  Failing over to the other one would have rescued two dead sessions already.
+- [ ] **Failover on 402 and 429.** Everything runs through one OpenRouter key, so a
+  dead key or an empty balance stops the agent. Falling back to another model or a
+  second key would have rescued two dead sessions already.
 - [ ] **Improve lyric ranking.** `search_by_lyrics` scores on the share of query
   terms present in the lyrics, so it rewards literal wording and misses
   paraphrase ("headlights" will not match "high beams"). Embeddings would fix

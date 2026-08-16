@@ -2,7 +2,6 @@
 
     python bakeoff.py                          the default panel on OpenRouter
     python bakeoff.py openai/gpt-5.4-mini ...  named models
-    python bakeoff.py --provider gemini gemini-3.5-flash
     python bakeoff.py --selfcheck              scoring logic only, no API calls
 
 Correctness is 5 points a case, scored mechanically so it is reproducible. Three
@@ -177,7 +176,7 @@ def score(case: dict, calls: list[str], reply: str, pending: list, error: str) -
     return {"points": points, "max": 5, "notes": notes, **base}
 
 
-async def run_case(model: str, provider: str, case: dict) -> dict:
+async def run_case(model: str, case: dict) -> dict:
     calls, reply, error, pending = [], [], "", []
     saver = InMemorySaver()
     thread = f"{model}-{case['name']}"
@@ -195,7 +194,6 @@ async def run_case(model: str, provider: str, case: dict) -> dict:
                 thread_id=thread,
                 mode=case.get("mode", "auto"),
                 model=model,
-                provider=provider,
             )
     except Exception as exc:  # noqa: BLE001 - a model that errors scores zero, not crashes
         error = f"{type(exc).__name__}: {exc}"
@@ -220,8 +218,8 @@ def _spent(key: str) -> float:
         return 0.0
 
 
-async def main(models: list[str], provider: str) -> None:
-    key = os.environ.get("OPENROUTER_API_KEY", "") if provider == "openrouter" else ""
+async def main(models: list[str]) -> None:
+    key = os.environ.get("OPENROUTER_API_KEY", "")
     results: dict[str, dict] = {}
 
     for model in models:
@@ -229,7 +227,7 @@ async def main(models: list[str], provider: str) -> None:
         rows = []
         print(f"\n{model}")
         for case in CASES:
-            got = await run_case(model, provider, case)
+            got = await run_case(model, case)
             rows.append({"case": case["name"], **got})
             mark = "ok  " if got["points"] == got["max"] else "    "
             print(
@@ -266,9 +264,6 @@ async def main(models: list[str], provider: str) -> None:
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    provider = "gemini" if "--provider" in sys.argv and "gemini" in args else "openrouter"
-    if provider == "gemini":
-        args = [a for a in args if a != "gemini"]
 
     if "--selfcheck" in sys.argv:
         feel = CASES[0]
@@ -293,4 +288,4 @@ if __name__ == "__main__":
         assert pend["points"] == 5, pend
         print("ok")
     else:
-        asyncio.run(main(args or PANEL, provider))
+        asyncio.run(main(args or PANEL))

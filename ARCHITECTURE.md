@@ -11,8 +11,8 @@ actually built, why it is built that way, and what the environment forces.
 ```
                       ┌───────────────────────────┐
                       │  agent.py                 │
-  OpenRouter or ◀─────│  LangGraph ReAct agent    │
-  Gemini (LLM)        │  model ↔ tools loop       │
+   OpenRouter ◀───────│  LangGraph ReAct agent    │
+   (the LLM)          │  model ↔ tools loop       │
                       └─────────────┬─────────────┘
                                     │ MCP, one stdio session per run
                                     ▼
@@ -84,14 +84,7 @@ gap between the abstract and the implementation.
 **LRCLIB for lyrics.** Spotify has no public lyrics endpoint. LRCLIB needs no key
 and no auth.
 
-**Two LLM providers, auto-selected.** `LLM_PROVIDER` forces one; left blank, the
-agent uses OpenRouter if that key is present and Gemini otherwise, so removing a key
-is enough to switch and neither provider being reachable is never silent. OpenRouter (default) reaches many
-models behind one key; Gemini is the second, added because Google's free tier keeps
-the agent running when OpenRouter credits are gone. Each has its own key and model
-variable, so switching is an env edit, not a code change. `langchain_google_genai` is
-imported inside `_llm()` so OpenRouter users need not install it. Any model chosen
-must support tool calling.
+**One LLM provider: OpenRouter.** A second provider (Gemini) was carried for a day and removed: it bought nothing that OpenRouter's own catalogue does not, since Gemini models are sold there too, and it doubled every code path that touched the model. The model is swappable through `OPENROUTER_MODEL` without touching code.
 
 **Approval as an interrupt, not a wrapper around each tool.** Gating happens in the
 graph (`interrupt_before=["tools"]`), not inside the tool functions, so the pause
@@ -147,6 +140,17 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-17** — Gemini removed as a provider, everywhere: no `LLM_PROVIDER`, no
+  `_pick_provider`, no `provider` argument through `_llm`/`build`/`run`/`turn`/
+  `decide`/`bakeoff`, no `langchain-google-genai`. Gemini models remain reachable
+  through OpenRouter, so nothing was lost but a fork in every model code path.
+- **2026-08-17** — One streaming loop instead of two. `run()` and `_drive()` each
+  carried a copy of the astream loop, so a streaming fix could land in one and not
+  the other. `_drive()` now takes a `gated` flag: ungated callers skip the state
+  inspection entirely, which is also required rather than merely faster, because
+  `aget_state` needs a checkpointer and `run()` is usually called without one.
+  `build()` now rejects gating without a checkpointer, since a paused graph has
+  nowhere to live.
 - **2026-08-16** — Default OpenRouter model is now `qwen/qwen3.5-flash-02-23`,
   chosen by a 14-model bake-off: it ties the previous default `openai/gpt-5.4-mini`
   at 29/30 within one tool call and 28% of the latency, for a tenth of the input

@@ -48,12 +48,11 @@ Two rules from the literature that matter for the implementation:
 - Verification is worth doing at more than one level: per candidate, then over the
   final answer.
 
-### 3. Provider failover
+### 3. Failover when the model is unavailable
 
-The provider is currently chosen once, at import, by which key exists. Failing over
-on 402 and 429 to the other provider would have rescued two dead sessions during
-development: an OpenRouter key with no credit, and Gemini's 20-requests-per-day free
-tier cap.
+Everything now runs through OpenRouter, so a dead key or an exhausted balance stops
+the agent completely. Two dead sessions during development would have been rescued by
+falling back to another OpenRouter model, or to a second key, on 402 and 429.
 
 Not clever, but the best reliability per line of code on this page.
 

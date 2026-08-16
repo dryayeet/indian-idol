@@ -156,7 +156,6 @@ score, and only the case-level tool assertions catch it.
 python bakeoff.py --selfcheck                 scoring logic, no API calls
 python bakeoff.py                             the default panel
 python bakeoff.py openai/gpt-5.4-mini ...     named models
-python bakeoff.py --provider gemini gemini-3.5-flash
 ```
 
 Use `python -u` so scores stream instead of appearing at the end. Results land in
