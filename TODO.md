@@ -40,6 +40,15 @@ Done section records what was actually finished.
 - [ ] **Web searches for better context engineering** of tool usage and history
   passing. Some of this is now done (leaner tool payloads, stubbed old tool
   results), but the reading has not been done systematically.
+- [ ] **Select the tools, rather than sending all of them every call.** All eleven
+  schemas go into every request, and the number only grows: the psych server and
+  per-user auth both add more. Retrieve the few that fit the request instead, either
+  by embedding the request against the tool descriptions or by a cheap first pass that
+  picks a subset. Two things to settle before building it: whether the token saving is
+  worth anything here, given a full bake-off costs $0.24, and whether a wrong subset
+  costs more than it saves, since a tool that is not in context cannot be called at
+  all. Measure the current schema cost first; the last count was 1,242 tokens for
+  nine tools.
 - [ ] **Score the reply, not just the tool calls.** The bake-off gave the new
   default 29/30 while it was streaming "The user is asking for..." and stray
   `</think>` tags to the user. Add a check for first-person deliberation and
@@ -113,6 +122,13 @@ Done section records what was actually finished.
 
 ## Done
 
+- [X] **2026-08-17** — `followed_artists` and `saved_podcasts`, with the
+  `user-follow-read` and `user-library-read` scopes. Search history stays out of
+  reach: Spotify has never exposed it. Blends too, permanently.
+- [X] **2026-08-17** — The Feb 2026 rename found in three more places, each of
+  which failed silently. Playlists page past 50, a playlist name resolves to its
+  id in the tool rather than in the model, and a refusal from Spotify is reported
+  as final so the model stops retrying it.
 - [X] **2026-08-16** — Context trimmed twice over: leaner tool payloads (23-30%
   per track-bearing call, `_track` down to name/artist/url) and a pre-model hook
   that stubs earlier turns' tool results (44% less sent on a third turn).

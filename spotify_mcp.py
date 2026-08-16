@@ -340,15 +340,55 @@ def _playlist_id(item: str) -> str:
     return item
 
 
+def _pages(path: str, limit: int, **params) -> list[dict]:
+    """Items up to limit, 50 at a time. Every list endpoint here caps a page at 50."""
+    out: list[dict] = []
+    while len(out) < limit:
+        page = _call("GET", path, params={"limit": 50, "offset": len(out), **params})["items"]
+        out += page
+        if len(page) < 50:  # last page
+            break
+    return out[:limit]
+
+
+def _playlists(limit: int = 200) -> list[dict]:
+    """Every playlist the user owns or follows. Spotify sends the odd null row."""
+    return [p for p in _pages("/me/playlists", limit) if p]
+
+
+_IS_ID = re.compile(r"[0-9A-Za-z]{22}").fullmatch
+
+
+def _resolve(name: str) -> str:
+    """A playlist name to its id. Users say names, so the agent is handed names."""
+    want = name.strip().lower()
+    words = set(re.findall(r"\w+", want))
+    mine = _playlists()
+    # exact, then every word of the request present in the name, then plain substring.
+    # Not "name in request": a playlist called "Ti" is inside "ni ti" and would win.
+    for hit in (
+        lambda n: n == want,
+        lambda n: words <= set(re.findall(r"\w+", n)),
+        lambda n: want in n,
+    ):
+        for p in mine:
+            if hit(p["name"].strip().lower()):
+                return p["id"]
+    # name the alternatives, so the caller can retry without another round trip
+    raise RuntimeError(f"no playlist called {name!r}. Yours: {', '.join(p['name'] for p in mine)}")
+
+
 @app.tool()
-def my_playlists(limit: int = 50) -> list[dict]:
+def my_playlists(limit: int = 200) -> list[dict]:
     """List the playlists the user owns or follows, with their ids and track counts."""
-    items = _call("GET", "/me/playlists", params={"limit": min(limit, 50)})["items"]
+    items = _playlists(limit)
     return [
         {
             "name": p["name"],
             "id": p["id"],
-            "tracks": (p.get("tracks") or {}).get("total"),
+            # "items", not "tracks": the Feb 2026 rename hit the playlist object too,
+            # so this read None for every playlist
+            "tracks": (p.get("items") or {}).get("total"),
             "owner": (p.get("owner") or {}).get("display_name"),
             "url": p["external_urls"]["spotify"],
         }
@@ -358,17 +398,69 @@ def my_playlists(limit: int = 50) -> list[dict]:
 
 
 @app.tool()
-def playlist_tracks(playlist: str, limit: int = 50) -> list[dict]:
-    """Read the tracks in a playlist. Accepts a playlist id, URI, or link.
+def playlist_tracks(playlist: str, limit: int = 200) -> list[dict]:
+    """Read the tracks in a playlist, by name. Also takes an id, URI, or link.
 
-    A name is not an id: given a name, call my_playlists first and match it there.
+    Pass the name the user said, exactly as they said it: this resolves it. There is no
+    need to call my_playlists first, and casing and punctuation do not have to match.
     """
-    path = f"/playlists/{_playlist_id(playlist)}/items"
-    items = _call("GET", path, params={"limit": min(limit, 50)})["items"]
+    # a name is resolved here rather than left to the model, which was calling this
+    # with "Unmaad", getting a 404, and asking the user for a link instead of looking
+    # the name up in my_playlists
+    pid = _playlist_id(playlist)
+    path = f"/playlists/{pid if _IS_ID(pid) else _resolve(pid)}/items"
+    try:
+        items = _pages(path, limit)
+    except RuntimeError as e:
+        # a bare 403 or 404 made the model retry the same call; say what cannot be fixed.
+        # A Blend answers 404 and another user's playlist 403, both permanently.
+        if not any(code in str(e) for code in ("403", "404")):
+            raise
+        raise RuntimeError(
+            "Spotify refuses this playlist in development mode: only the user's own "
+            "playlists can be read, not ones owned by other users or by Spotify itself "
+            "(Blends, Discover Weekly, Daily Mix). Do not retry; say so instead."
+        ) from None
     # the same Feb 2026 migration renamed each row's payload from "track" to "item".
     # Reading "track" gives an empty list for every playlist. Podcast episodes sit in
     # the same field and carry no artists, so type has to be checked.
     return [_track(i["item"]) for i in items if (i.get("item") or {}).get("type") == "track"]
+
+
+@app.tool()
+def followed_artists(limit: int = 100) -> list[dict]:
+    """Artists the user follows. Taste as names, where top_tracks is taste as plays.
+
+    Names only: the Feb 2026 migration stripped genres, popularity and follower counts
+    from the artist object, and /artists is 403 in development mode.
+    """
+    # the only cursor-paged endpoint here: it hands back the id to carry on from
+    out: list[dict] = []
+    after: str | None = None
+    while len(out) < limit:
+        params = {"type": "artist", "limit": 50} | ({"after": after} if after else {})
+        page = _call("GET", "/me/following", params=params)["artists"]
+        out += page["items"]
+        after = (page.get("cursors") or {}).get("after")
+        if not after or not page["items"]:
+            break
+    return [{"name": a["name"], "url": a["external_urls"]["spotify"]} for a in out[:limit]]
+
+
+@app.tool()
+def saved_podcasts(limit: int = 50) -> list[dict]:
+    """Podcasts in the user's library. Spotify exposes saved shows, not listening history."""
+    return [
+        {
+            "name": s["show"]["name"],
+            # publisher went the way of artist genres in the Feb 2026 migration
+            "episodes": s["show"].get("total_episodes"),
+            "description": (s["show"].get("description") or "")[:300],
+            "url": s["show"]["external_urls"]["spotify"],
+        }
+        for s in _pages("/me/shows", limit)
+        if s.get("show")
+    ]
 
 
 def _uri(item: str) -> str:
@@ -412,6 +504,9 @@ if __name__ == "__main__":
         assert _playlist_id("spotify:playlist:PID") == "PID"
         assert _playlist_id("https://open.spotify.com/playlist/PID?si=2") == "PID"
         assert _playlist_id(" PID ") == "PID"
+        # a bare name must not be mistaken for an id; a real id must not be looked up
+        assert _IS_ID("4hWbZFjKdKAZWMTiTYUW41") and not _IS_ID("Unmaad")
+        assert not _IS_ID("Ni || Ti") and not _IS_ID("my 22 character playlist")
         assert _terms("Songs about leaving my hometown") == ["leaving", "hometown"]
         keep = {"name": "Leaving Home", "artist": "Indian Ocean"}
         junk = {"name": "Dame Tu Cosita", "artist": "El Chombo"}

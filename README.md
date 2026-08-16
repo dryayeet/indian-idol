@@ -1,7 +1,7 @@
 # Spotify MCP Server
 
 This is the Spotify tool server for the autonomous Spotify agent.
-It is an MCP server. It gives an agent nine tools for the Spotify Web API and LRCLIB.
+It is an MCP server. It gives an agent eleven tools for the Spotify Web API and LRCLIB.
 For the intent, read [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md).
 For what is built and why, read [ARCHITECTURE.md](ARCHITECTURE.md).
 For what is still owed, read [TODO.md](TODO.md).
@@ -19,7 +19,9 @@ For multi-model plans, read [MULTI_MODEL.md](MULTI_MODEL.md).
 | `listening_lyrics(source, limit, chars)` | Get the lyrics of recent or top tracks in one call. |
 | `search_by_lyrics(phrase, search_terms, candidates, limit)` | Find tracks whose lyrics match. Slower. Can return nothing. |
 | `my_playlists(limit)` | List the playlists the user owns or follows. |
-| `playlist_tracks(playlist, limit)` | Read the tracks in a playlist. |
+| `playlist_tracks(playlist, limit)` | Read the tracks in a playlist, by name, id, URI, or link. |
+| `followed_artists(limit)` | Artists the user follows. Names only. |
+| `saved_podcasts(limit)` | Podcasts in the user's library. |
 | `create_playlist(name, track_uris, description)` | Make a private playlist and add the tracks. |
 
 `create_playlist` accepts a track URI, a Spotify link, or an ID.
@@ -90,7 +92,8 @@ Use `.env.example` as the pattern.
    Do not use `localhost`. Spotify refuses it.
 4. Get a refresh token with these scopes:
    `user-read-recently-played`, `user-top-read`, `playlist-modify-private`,
-   and `playlist-read-private`. Run `python get_token.py` to do this.
+   `playlist-read-private`, `user-follow-read`, and `user-library-read`.
+   Run `python get_token.py` to do this.
 5. Put the three values in the `.env` file.
 
 Keep the `.env` file out of the repository. The `.gitignore` file does this.
@@ -147,6 +150,11 @@ The agent test lists the tools through MCP. It does not call the language model.
   A restart loses the history.
 - Reading the tracks of any playlist needs the `playlist-read-private` scope.
   This is true even for public playlists.
+- Only the user's own playlists can be read. Playlists that Spotify owns,
+  such as a Blend, a Daily Mix, or Discover Weekly, are not in the list and
+  answer 404 by id. Another user's playlist answers 403. This is permanent.
+- Spotify no longer sends an artist's genres, popularity, or follower count,
+  and it no longer sends a podcast's publisher.
 - The connection to `accounts.spotify.com` can fail.
   The HTTP client then tries again three times.
 

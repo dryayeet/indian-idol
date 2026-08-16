@@ -22,6 +22,7 @@ actually built, why it is built that way, and what the environment forces.
         │  recently_played   top_tracks   get_lyrics     │
         │  search_by_feel    search_by_lyrics            │
         │  my_playlists      playlist_tracks             │
+        │  followed_artists  saved_podcasts              │
         │  listening_lyrics  create_playlist             │
         └──────────┬─────────────────────────┬──────────┘
                    │ OAuth refresh token     │ no auth
@@ -108,6 +109,9 @@ debugging cycle.
 | mcp 1.x vs 2.0 API | 1.x is `FastMCP` and `Tool.inputSchema`; 2.0 is `MCPServer` and `Tool.input_schema`. Moving between them touches every client. |
 | `call_tool()` return shape | 1.x returns a `(blocks, structured)` tuple, 2.0 returns an object with `.content`. Clients unpack the tuple. |
 | Spotify endpoints moved 2026-02 | `POST /me/playlists` replaced `POST /users/{id}/playlists`; playlist `/tracks` became `/items`. The old paths return a bare 403 with no reason. |
+| The same rename hit three layers | The endpoint, each row's payload (`track` → `item`), and the playlist object's count field (`tracks` → `items`) all moved. Each one failed silently as an empty list or a `None`, so they were found one at a time. |
+| Spotify-owned playlists are gone | Blends, Daily Mix, and Discover Weekly are absent from `/me/playlists` and answer 404 by id, even with a user token. Extended quota mode is the only route and has needed 250k monthly active users since May 2025. Another user's playlist answers 403. |
+| Artist and show objects were trimmed | Genres, popularity, and follower counts are no longer on the artist object, `GET /artists` is 403 in development mode, and a show no longer carries its publisher. `followed_artists` returns names because names are what exists. |
 | Redirect URI rules | Plain HTTP is allowed only on a literal loopback IP. Use `http://127.0.0.1:8888/callback`, never `localhost`. |
 | Playlist reads are scoped | `GET /playlists/{id}/items` returns 403 without `playlist-read-private`, **even for public playlists**, and `GET /playlists/{id}` no longer carries track items. There is no unscoped way to read a playlist's contents. |
 | `/v1/search` caps `limit` at 10 | A limit of 11 or more returns `400 Invalid limit`. `offset` paging still works, so `_search_tracks` pages in tens. This broke `search_by_feel`'s own default of 20 until it was found. |
@@ -140,6 +144,35 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-17** — Paging, two new tools, and a third instance of the same rename.
+  `playlist_tracks` read the first 50 tracks and silently dropped the rest, so a
+  240-track playlist was analysed from a third of itself. One `_pages` helper now
+  serves playlists, tracks and shows. `my_playlists` reported `tracks: None` for all
+  69, because the playlist object's `tracks` field became `items` in the same Feb 2026
+  migration that renamed the endpoint and the row payload. Added `followed_artists`
+  (cursor-paged, the only such endpoint here) and `saved_podcasts`, needing the new
+  `user-follow-read` and `user-library-read` scopes. Both return fewer fields than
+  planned: artist genres, popularity and follower counts, and a show's publisher, are
+  no longer sent at all, and shipping them would have been three more permanent nulls. A 403 on someone else's playlist
+  now says what cannot be fixed, since a bare 403 made the model retry forever.
+  Blends are settled: they never appear in `my_playlists`, and a blend id answers 404
+  even with a user token from the Authorization Code flow. Extended quota mode is the
+  only route and has required 250k monthly active users since May 2025, so this is
+  permanent, not a bug to fix. `playlist_tracks` reports it as such rather than
+  retrying, and the same message covers Discover Weekly and Daily Mix.
+- **2026-08-17** — The prompt asks for analysis rather than a list: state the pattern,
+  say where it breaks, name the tracks that carry the claim, and keep the reply one
+  argument. It also asks the model to read an open request more than one way before
+  concluding. Costs roughly 90 tokens per call and one extra search on vague requests.
+- **2026-08-17** — `playlist_tracks` takes a playlist name, and `my_playlists` pages.
+  Told "look at Unmaad", the model passed the name as an id, got a 404, and asked the
+  user for a link instead of calling `my_playlists`. Telling it to chain the two calls
+  in the docstring worked sometimes, which is worse than not working. `playlist_tracks`
+  now resolves a name itself, so the failure cannot happen. Separately `my_playlists`
+  asked for 50 of 70 playlists and never paged, so a fifth of them did not exist as far
+  as the agent was concerned. Name matching is exact, then every word of the request
+  present in the name, then substring; "name inside request" is deliberately absent
+  because a playlist called "Ti" sits inside "ni ti" and would win.
 - **2026-08-17** — `playlist_tracks` read every playlist as empty. The Feb 2026
   migration renamed each row's payload from `track` to `item` as well as the
   endpoint, so the `if i.get("track")` filter dropped all 46 rows of a 46-track
