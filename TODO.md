@@ -45,6 +45,20 @@ Done section records what was actually finished.
   cannot revise one, so "drop the last three" and "put the slow ones at the end" are
   both impossible. The most-requested thing every other Spotify MCP server has and
   this one does not. See API_SURFACE.md.
+- [ ] **A mental map of the user, built once at the start of a chat.** The playlist
+  names now go into the prompt and that alone removed ten wasted calls, which suggests
+  the same move goes further: read the full picture once at startup, top artists and
+  tracks over all three time ranges, liked songs, saved albums, followed artists,
+  playlist names with their sizes, and fold it into a short standing description of
+  what this person listens to. Every turn then starts already knowing them, instead of
+  spending three tool calls rediscovering it.
+  Three things to work out. What it costs, since the raw data is far too big to paste
+  and needs summarising into a few hundred tokens, probably by a cheap model at startup
+  rather than by hand. When it refreshes, because taste moves slowly but a new playlist
+  does not. And whether a summary written once can mislead a later turn, which is the
+  known risk with any cached profile: `now_playing` and `recently_played` are live and
+  should always win over the map. Related: [MULTI_MODEL.md](MULTI_MODEL.md) on using a
+  second cheap model for a narrow job, and the psych profile in the abstract.
 - [ ] **Album and artist names are still ambiguous.** Playlist names are in the prompt
   now, so a playlist is recognised without a lookup. An album or artist the user names
   is not, and `album_tracks` and `artist_albums` resolve by search rather than against
@@ -154,6 +168,9 @@ Done section records what was actually finished.
 
 ## Done
 
+- [X] **2026-08-17** — Voice: tagged prompt blocks and a short list of things never to
+  write, so replies stop reading like a review. A few-shot block was tried and cut: it
+  taught the model to answer without calling tools at all.
 - [X] **2026-08-17** — The user's playlist names go into the agent's prompt, so a name
   in a request is recognised as a playlist instead of searched for as a song. Ten
   wasted calls became two. Three prompt wordings had failed first; the problem was

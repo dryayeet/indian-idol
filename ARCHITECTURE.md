@@ -144,6 +144,25 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-17** — The prompt is tagged blocks now, and the replies stopped reading
+  like a press release. The analytical instruction added earlier had produced exactly
+  the register it asked for, a critic filing a review: bold section headings, "a study
+  in controlled tension", "paints a portrait of", "it's not just sadness, it's the
+  weight of", three adjectives everywhere. Those are the documented signs of AI writing,
+  so the fix was a short list of things never to write, plus a plain instruction to lead
+  with what was noticed. Style costs about 90 tokens.
+  A worked experiment failed on the way and is worth keeping: a few-shot block of five
+  example exchanges, taken from the voice work in the lemon-ai project next door. Two
+  things went wrong. Written against real playlist names, the model repeated an example
+  reply word for word and then invented supporting facts around it. Worse, because the
+  examples showed only finished replies and never the tool call that earned them, the
+  model stopped calling tools entirely: zero calls on three of three cases, and
+  fabricated Spotify links like `4k5k5k5k5k5k5k5k5k5k5k` in place of real ones. Adding
+  the tool step to each example fixed the tool use, but the block was still 400 tokens
+  of the prompt, so it was cut altogether. The rule left behind, that nothing may be
+  said about this library without a tool and no link may be written from memory, is the
+  part worth having. A few-shot example teaches the whole shape of a turn, so an example
+  that skips the work teaches the model to skip the work.
 - **2026-08-17** — `web_search`, over DuckDuckGo through `ddgs`. Keyless, so it adds a
   package but no credential. It is for the context around music rather than for finding
   music: the docstring and the prompt both say so, because a search tool that returns
