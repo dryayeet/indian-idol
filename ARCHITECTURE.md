@@ -140,6 +140,14 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-17** — `playlist_tracks` read every playlist as empty. The Feb 2026
+  migration renamed each row's payload from `track` to `item` as well as the
+  endpoint, so the `if i.get("track")` filter dropped all 46 rows of a 46-track
+  playlist. The symptom looked like an approval bug: the model got `[]`, was told
+  by the prompt to try again after an empty result, and asked for approval on the
+  same call forever. Episodes share that field and carry no artists, so the row
+  type is now checked. The docstring also says a name is not an id, because the
+  model was passing "Ni || Ti" straight in instead of calling `my_playlists`.
 - **2026-08-17** — Gemini removed as a provider, everywhere: no `LLM_PROVIDER`, no
   `_pick_provider`, no `provider` argument through `_llm`/`build`/`run`/`turn`/
   `decide`/`bakeoff`, no `langchain-google-genai`. Gemini models remain reachable

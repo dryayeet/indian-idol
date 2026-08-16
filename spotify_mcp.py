@@ -359,10 +359,16 @@ def my_playlists(limit: int = 50) -> list[dict]:
 
 @app.tool()
 def playlist_tracks(playlist: str, limit: int = 50) -> list[dict]:
-    """Read the tracks in a playlist. Accepts a playlist id, URI, or link."""
+    """Read the tracks in a playlist. Accepts a playlist id, URI, or link.
+
+    A name is not an id: given a name, call my_playlists first and match it there.
+    """
     path = f"/playlists/{_playlist_id(playlist)}/items"
     items = _call("GET", path, params={"limit": min(limit, 50)})["items"]
-    return [_track(i["track"]) for i in items if i.get("track")]
+    # the same Feb 2026 migration renamed each row's payload from "track" to "item".
+    # Reading "track" gives an empty list for every playlist. Podcast episodes sit in
+    # the same field and carry no artists, so type has to be checked.
+    return [_track(i["item"]) for i in items if (i.get("item") or {}).get("type") == "track"]
 
 
 def _uri(item: str) -> str:
