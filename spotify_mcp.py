@@ -516,9 +516,12 @@ def artist_albums(artist: str, limit: int = 30) -> list[dict]:
 def now_playing() -> dict:
     """What is playing right now, if anything. Needs the user-read-playback-state scope."""
     r = _call("GET", "/me/player/currently-playing")
-    if not r or not r.get("item"):
+    item = (r or {}).get("item")
+    if not item:
         return {"playing": False}
-    return _track(r["item"]) | {"playing": bool(r.get("is_playing"))}
+    if item.get("type") != "track":  # a podcast episode has no artists to unpack
+        return {"playing": True, "name": item.get("name"), "kind": item.get("type")}
+    return _track(item) | {"playing": bool(r.get("is_playing"))}
 
 
 @app.tool()
