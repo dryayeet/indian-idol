@@ -6,7 +6,7 @@ Scopes the refresh token needs:
     playlist-read-private   (required to read any playlist's contents, even public ones)
     user-follow-read user-library-read user-read-playback-state
 
-What the API still answers, and what it no longer does: API_SURFACE.md
+What the API still answers, and what it no longer does: research/API_SURFACE.md
 
 Run:  python spotify_mcp.py           (stdio)
 Check: python spotify_mcp.py --selfcheck

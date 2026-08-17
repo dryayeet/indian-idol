@@ -217,7 +217,7 @@ with everything else still owed, is [TODO.md](TODO.md).
   list, the model announced that "Unmaad" was really called "Bhar Do Jholi Meri", which
   is its first track.
 - **2026-08-17** — The whole reachable surface probed and written down in
-  API_SURFACE.md, 37 live requests rather than a reading of the documentation. Six
+  research/API_SURFACE.md, 37 live requests rather than a reading of the documentation. Six
   more tools from what answered: `liked_songs`, `saved_albums`, `top_artists`,
   `album_tracks`, `artist_albums`, `now_playing`. The probe also found that the
   limit-10 cap is not only on `/search`: `/artists/{id}/albums` shares it, so `_pages`
@@ -276,7 +276,7 @@ with everything else still owed, is [TODO.md](TODO.md).
   at 29/30 within one tool call and 28% of the latency, for a tenth of the input
   price. Full results and method in [MODEL_BAKEOFF.md](MODEL_BAKEOFF.md); the
   reasoning about running several models at once is in
-  [MULTI_MODEL.md](MULTI_MODEL.md). A rubric bug in the first round (demanding
+  [MULTI_MODEL.md](research/MULTI_MODEL.md). A rubric bug in the first round (demanding
   `search_by_feel` for "songs about rain", where the lyric search is a fair read)
   had masked the winner, so the fix came before the choice. The model needs
   `extra_body={"reasoning": {"enabled": False}}` on OpenRouter: it otherwise streams

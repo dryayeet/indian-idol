@@ -6,8 +6,8 @@ For the intent, read [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md).
 For what is built and why, read [ARCHITECTURE.md](ARCHITECTURE.md).
 For what is still owed, read [TODO.md](TODO.md).
 For the model choice, read [MODEL_BAKEOFF.md](MODEL_BAKEOFF.md).
-For what the API still allows, read [API_SURFACE.md](API_SURFACE.md).
-For multi-model plans, read [MULTI_MODEL.md](MULTI_MODEL.md).
+For what the API still allows, read [research/API_SURFACE.md](research/API_SURFACE.md).
+For multi-model plans, read [research/MULTI_MODEL.md](research/MULTI_MODEL.md).
 
 ## Tools
 
@@ -46,8 +46,8 @@ For multi-model plans, read [MULTI_MODEL.md](MULTI_MODEL.md).
 | `get_token.py` | Mints the refresh token. Run it again when the scopes change. |
 | `bakeoff.py` | Scores models on the agent's job. Run `python bakeoff.py`. |
 | `MODEL_BAKEOFF.md` | The model results and what they mean. |
-| `MULTI_MODEL.md` | Plans for using more than one model. |
-| `API_SURFACE.md` | Every endpoint that still answers, and what other Spotify MCP servers do. |
+| `research/MULTI_MODEL.md` | Plans for using more than one model. |
+| `research/API_SURFACE.md` | Every endpoint that still answers, and what other Spotify MCP servers do. |
 | `ui_check.py` | Drives the web interface headlessly. Run `python ui_check.py`. |
 | `run_tool.py` | A command-line client. Use it to call one tool. |
 | `streamlit_app.py` | A web interface. It shows all the tools as forms. |

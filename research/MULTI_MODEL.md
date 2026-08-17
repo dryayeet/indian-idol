@@ -2,7 +2,7 @@
 
 Notes for later. Nothing here is built yet; this is the reasoning so it does not
 have to be redone. Written 2026-08-16, grounded in the bake-off data in
-[MODEL_BAKEOFF.md](MODEL_BAKEOFF.md) and in current published work.
+[MODEL_BAKEOFF.md](../MODEL_BAKEOFF.md) and in current published work.
 
 ## The finding that shapes all of it
 
@@ -21,7 +21,7 @@ tokens.
 
 Not an LLM at all, which is the point.
 
-`_lyric_score` in [spotify_mcp.py](spotify_mcp.py) counts shared words between the
+`_lyric_score` in [spotify_mcp.py](../spotify_mcp.py) counts shared words between the
 request and the lyrics, so "headlights" never matches "high beams". A small
 embedding model does paraphrase properly, costs about $0.01 per million tokens, and
 is deterministic and cacheable. Lyrics for a track never change, so the embedding is

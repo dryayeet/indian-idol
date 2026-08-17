@@ -44,7 +44,7 @@ Done section records what was actually finished.
   `DELETE` removes, `PUT /playlists/{id}` renames. The agent can build a playlist but
   cannot revise one, so "drop the last three" and "put the slow ones at the end" are
   both impossible. The most-requested thing every other Spotify MCP server has and
-  this one does not. See API_SURFACE.md.
+  this one does not. See research/API_SURFACE.md.
 - [ ] **A mental map of the user, built once at the start of a chat.** The playlist
   names now go into the prompt and that alone removed ten wasted calls, which suggests
   the same move goes further: read the full picture once at startup, top artists and
@@ -57,7 +57,7 @@ Done section records what was actually finished.
   rather than by hand. When it refreshes, because taste moves slowly but a new playlist
   does not. And whether a summary written once can mislead a later turn, which is the
   known risk with any cached profile: `now_playing` and `recently_played` are live and
-  should always win over the map. Related: [MULTI_MODEL.md](MULTI_MODEL.md) on using a
+  should always win over the map. Related: [MULTI_MODEL.md](research/MULTI_MODEL.md) on using a
   second cheap model for a narrow job, and the psych profile in the abstract.
 - [ ] **Album and artist names are still ambiguous.** Playlist names are in the prompt
   now, so a playlist is recognised without a lookup. An album or artist the user names
@@ -170,12 +170,12 @@ Done section records what was actually finished.
 - [ ] **Embeddings for lyric ranking.** The highest-value multi-model move, and it
   is not an LLM: `_lyric_score` counts shared words, so "headlights" never matches
   "high beams". Lyrics never change, so embeddings are computed once and cached.
-  See [MULTI_MODEL.md](MULTI_MODEL.md).
+  See [MULTI_MODEL.md](research/MULTI_MODEL.md).
 - [ ] **A relevance judge over search results.** `_relevant()` is a four-character
   substring check; it kills gibberish but cannot tell that three "Rainy Days"
   tracks match the words and miss the request. A cheap second model scoring each
   candidate, with no access to the conversation, is the verifier pattern. See
-  [MULTI_MODEL.md](MULTI_MODEL.md).
+  [MULTI_MODEL.md](research/MULTI_MODEL.md).
 - [ ] **Failover on 402 and 429.** Everything runs through one OpenRouter key, so a
   dead key or an empty balance stops the agent. Falling back to another model or a
   second key would have rescued two dead sessions already.
