@@ -90,6 +90,58 @@ Done section records what was actually finished.
   "Your Top Songs 2024", the agent quietly called `top_tracks` and analysed that
   instead, without saying the playlist was unreachable. The answer was useful and the
   substitution was reasonable, but it was not disclosed.
+- [ ] **A weight per tool, nudging how often it gets reached for.** Sits with the tool
+  selection item below: instead of choosing which tools the model sees, keep sending all
+  of them but bias which one it picks.
+  The research says the bias is already there and is currently accidental.
+  [BiasBusters](https://arxiv.org/html/2510.00307) finds models prefer tools "not for
+  their relevance or accuracy, but because of superficial metadata: tool names,
+  descriptions, or prompt ordering". Tool-description poisoning is a known attack for
+  the same reason. So the question is not whether a nudge works, it is whether ours is
+  deliberate or an accident of the order tools happen to be defined in.
+  On the digits: a number in the schema is unlikely to reach the model as a preference,
+  since no provider exposes a per-tool bias and a model has no calibration for 0.8
+  against 0.6. A weight has to *drive* something instead. Two mechanisms that exist:
+  order the tool list by weight, which the paper above shows moves selection on its own,
+  and generate the text nudge from the number, so 0.9 renders as "prefer this" and 0.2
+  as "only when nothing else fits". The number stays the knob, the text and the ordering
+  are what the model actually sees.
+  The mature version is to learn the weights rather than set them.
+  [SkillGraph](https://arxiv.org/abs/2604.19793) mines a weighted transition graph from
+  49,831 successful runs. The cheap local version: count which tools appear in turns the
+  user did not have to correct, and let that move the weight. That needs the feedback
+  signal in the Blocking section first.
+  Worth being honest that today's real problem is the opposite one. Nothing here is
+  being over-called; `web_search` is *under*-used and `similar_artists` was picked
+  correctly four times out of four. Build this when a tool is measurably reached for at
+  the wrong times, not before.
+- [ ] **A preference file the agent writes to itself.** Not the SQLite checkpointer,
+  which is conversation state. This is the standing "how to work with me" layer: when
+  the user says "you should have web searched that" or "always check my playlists
+  first", it gets written down and read back on every turn.
+  Well-trodden ground. It is MemGPT's core memory, now
+  [Letta](https://www.leoniemonigatti.com/blog/memgpt.html), a small block that lives in
+  the context window and the agent edits directly. Spring AI shipped
+  [AutoMemoryTools](https://spring.io/blog/2026/04/07/spring-ai-agentic-patterns-6-memory-tools/)
+  in April 2026 writing exactly this to a typed Markdown file. Mem0 resolves conflicts
+  on write, updating a preference rather than appending a second contradictory one,
+  which is the detail that stops the file rotting.
+  The finding that should shape the design: storing the preference is not the same as
+  obeying it. [Trace](https://arxiv.org/html/2606.13174v1) measured Mem0-style memory
+  leaving **57.5% of applicable preference checks violated**. The agent reads its own
+  notes and ignores them. Their answer is to compile each correction into an atomic rule
+  *with an executable check* that runs at the point it matters, rather than trusting the
+  model to remember.
+  That matches this codebase exactly. Three prompt wordings failed to stop the model
+  searching for a playlist name; putting the names in context fixed it in one go. So the
+  rule should be: a preference that can be enforced in code gets enforced in code, and
+  the file holds only the ones that genuinely cannot be. Otherwise this becomes a
+  growing document the model politely ignores.
+  Shape: markdown, capped at a few hundred tokens, one line per preference with the date
+  and what prompted it. The agent proposes an edit and says so in the reply rather than
+  writing silently, because a preference written from a misread instruction is worse
+  than none. Sits above the mental-map item, which stores what the user *listens to*;
+  this stores how they want to be worked with.
 - [ ] **Select the tools, rather than sending all of them every call.** All eleven
   schemas go into every request, and the number only grows: the psych server and
   per-user auth both add more. Retrieve the few that fit the request instead, either
@@ -131,12 +183,13 @@ Done section records what was actually finished.
   terms present in the lyrics, so it rewards literal wording and misses
   paraphrase ("headlights" will not match "high beams"). Embeddings would fix
   that; the emotion classifier from the psych server would fix it better.
-- [ ] **Detect empty search results.** Spotify's search never returns nothing: a
+- [X] **2026-08-16** — Detect empty search results. `_relevant()` requires a query word
+  in the title or artist, so a nonsense query returns nothing instead of noise. Spotify's search never returns nothing: a
   meaningless query still yields arbitrary tracks (verified with
   `q="qwertypoiu zxcvbnm asdfgh"`). The agent cannot tell a good match from
   noise, so a bad description is presented as a real answer.
-- [ ] **Retry on Spotify 429.** `_call` raises with the `Retry-After` value but
-  does not wait and retry. A week of listening scored in one run will hit it.
+- [X] **2026-08-16** — Retry on Spotify 429. `_call` now waits the `Retry-After` and
+  retries three times, failing fast if the wait is longer than 30s.
 - [ ] **Test beyond the selfchecks.** `ui_check.py` now covers the mode controls
   end to end, but the HTTP paths are still untested against recorded responses,
   so an endpoint moving under us is only found by running the thing.
