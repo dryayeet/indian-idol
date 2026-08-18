@@ -132,9 +132,19 @@ def web_search(query: str, limit: int = 5) -> list[dict]:
     # ten lines to the log. primp is the noisy one; ddgs alone is not enough.
     for noisy in ("ddgs", "primp"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+    try:
+        found = DDGS().text(query, max_results=min(limit, 10))
+    except Exception as e:  # noqa: BLE001 - rate limits arrive as several exception types
+        # a bare error reads as "try again" to the model, and retrying a rate limit
+        # deepens it: the same loop the playlist 403 message already breaks
+        raise RuntimeError(
+            "web search is rate limited or unreachable right now, and that is final "
+            f"for this turn ({type(e).__name__}). Do not retry; answer from what you "
+            "already have, and say the web could not be checked."
+        ) from None
     return [
         {"title": r["title"], "url": r["href"], "snippet": (r["body"] or "")[:400]}
-        for r in DDGS().text(query, max_results=min(limit, 10))
+        for r in found
     ]
 
 

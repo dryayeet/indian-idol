@@ -82,8 +82,9 @@ search_by_feel matches song, artist, and album names, so `description` should be
 five title-like words, not a sentence. "driving away from my hometown for the last
 time" is a request; "leaving home" and "small town" are queries.
 It keeps only tracks that carry one of your words, so it can come back empty. That
-means those words found nothing, not that no such music exists. Search again with
-different words. Never tell the user there is nothing after one empty search.
+means those words found nothing, not that no such music exists. Try a second phrasing,
+at most a third. If those also miss, stop and say what you tried: an honest miss beats
+a tenth search, and more rewordings of the same idea will not find different music.
 The three numbers are not decoration. Moving one off 0.5 makes the tool measure the
 candidates and rank them by how they actually sound, so set them when the request is
 about a feeling.
@@ -104,8 +105,11 @@ one call. Do not call get_lyrics once per track.
 </reading what they already have>
 
 <attachments>
-An uploaded image or pdf arrives already read: its text is in the message. Treat it as
-what the user showed you, not as a tool result. Numbers about how music sounds, and
+An uploaded image or pdf arrives already read: its complete text is in the message,
+inside the <attached ...> block. Never say you cannot open, see, or read an
+attachment. You are not being handed a file; you are being handed its content, and
+refusing it is refusing text you already have. Treat it as what the user showed you,
+not as a tool result. Numbers about how music sounds, and
 anything about what is in the user's library, still come from tools: never state a
 measurement or a count you did not see a tool return this turn. A screenshot of a
 playlist the user owns is an invitation to measure the real playlist.
@@ -273,7 +277,11 @@ def _user_message(question: str, attachments: list[dict] | None):
         else:
             blocks.append(
                 {"type": "text",
-                 "text": f'<attached pdf "{a["name"]}">\n{a["text"]}\n</attached>'}
+                 "text": (
+                     f'The user attached "{a["name"]}". It has already been read; its '
+                     f'complete extracted text is:\n<attached pdf "{a["name"]}">\n'
+                     f'{a["text"]}\n</attached>'
+                 )}
             )
     # readings ride the message so the shrink hook can swap them in later turns
     return HumanMessage(content=blocks, additional_kwargs={"readings": readings})
@@ -322,7 +330,7 @@ def _shrink_old_tools(state: dict) -> dict:
                     )
                 elif (
                     b.get("type") == "text"
-                    and b["text"].startswith("<attached pdf")
+                    and '<attached pdf "' in b["text"]
                     and len(b["text"]) > PDF_KEEP
                 ):
                     blocks.append(
@@ -402,6 +410,9 @@ def _config(checkpointer, thread_id):
 
 
 MAX_ROUNDS = 20  # tool rounds in one turn; past this the model is looping, not working
+TOOL_BUDGET = 6  # calls to any ONE tool per turn. Rewording a search evades the exact-
+# repeat check, so a per-tool count is what catches "kept searching with new words".
+# 6, not 4: fanning similar_artists over followed artists legitimately runs five.
 
 
 def _call_key(calls: list[dict]) -> str:
@@ -424,6 +435,7 @@ async def _drive(graph, config, start, on_part, mode: str, gated: bool) -> list[
     """
     inp = start
     seen: set[str] = set()
+    uses: dict[str, int] = {}  # calls per tool this turn, for the TOOL_BUDGET brake
     shown: set[str] = set()  # resuming re-emits the paused state, so dedupe by message id
     rounds = 0
     while True:
@@ -457,15 +469,20 @@ async def _drive(graph, config, start, on_part, mode: str, gated: bool) -> list[
         pending = state.values["messages"][-1].tool_calls
         key = _call_key(pending)
         rounds += 1
-        if key in seen or rounds > MAX_ROUNDS:
+        over = next((c["name"] for c in pending if uses.get(c["name"], 0) >= TOOL_BUDGET), None)
+        if key in seen or over or rounds > MAX_ROUNDS:
             if rounds > MAX_ROUNDS + 5:  # told to conclude and still calling: cut it off
                 on_part("token", "\n\nStopped: the model kept repeating tool calls.")
                 return []
-            why = (
-                "This exact call already ran this turn, and its result has not changed."
-                if key in seen
-                else f"This turn has used {MAX_ROUNDS} rounds of tool calls."
-            )
+            if key in seen:
+                why = "This exact call already ran this turn, and its result has not changed."
+            elif over:
+                why = (
+                    f"{over} has already run {TOOL_BUDGET} times this turn. More calls "
+                    "to it are blocked: rewording the same search finds the same music."
+                )
+            else:
+                why = f"This turn has used {MAX_ROUNDS} rounds of tool calls."
             await graph.aupdate_state(
                 config,
                 {
@@ -483,6 +500,8 @@ async def _drive(graph, config, start, on_part, mode: str, gated: bool) -> list[
             inp = None
             continue
         seen.add(key)
+        for c in pending:
+            uses[c["name"]] = uses.get(c["name"], 0) + 1
         if any(needs_approval(mode, c["name"]) for c in pending):
             return pending
         inp = None  # allowed by the mode, keep going without asking

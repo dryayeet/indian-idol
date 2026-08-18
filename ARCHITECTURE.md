@@ -145,6 +145,35 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-18** — The search loop had three fuels, and the exact-repeat brake only
+  cut one. Results always fed back to the model verbatim; what was missing was anything
+  evaluative. Fuel one was an instruction: "never tell the user there is nothing after
+  one empty search" had no upper bound, so every empty result was an instructed retry.
+  Now bounded at two, at most three phrasings. Fuel two was error shape: a rate-limited
+  `web_search` surfaced as a bare `Error: ...`, which reads as "try again", and
+  retrying a rate limit deepens it; the tool now reports the failure as final for the
+  turn, the same move as the playlist 403. Fuel three was rewording: each retry changes
+  one adjective, so the exact-repeat check never fires; `_drive` now also counts calls
+  per tool and blocks the seventh call to any one tool (six, because fanning
+  similar_artists over followed artists legitimately runs five). Tested with a request
+  built to miss on every phrasing: search_by_feel stopped at exactly 6, the model
+  pivoted tools, and the reply admitted what it could not find. The soft prompt bound
+  was ignored (it used all six), which is the expected shape: prompts nudge, brakes
+  enforce.
+- **2026-08-18** — A PDF upload was refused by the model that was holding its text.
+  "Look at what I attached" got "I can't read attached files directly", and the fix
+  hunt went down the wrong ladder: extraction worked (3,952 chars from the real file),
+  the message carried both blocks, the raw model read the same blocks fine. The failure
+  was a belief, not a pipe: qwen carries a trained prior that PDF attachments are
+  unreadable binaries, and in two of three runs it recited that disclaimer over text
+  sitting in its own context, sometimes refusing outright, sometimes disclaiming and
+  then using the content anyway. Verbatim per-run variance, nothing deterministic.
+  The fix is framing: the block now opens with 'The user attached "name". It has
+  already been read; its complete extracted text is:' and the prompt says refusing an
+  attachment is refusing text you already have. Three of three runs now use the
+  content, though one still prefixed a reflexive disclaimer before answering. Worth
+  remembering alongside the playlist-name lesson: this time the model HAD the
+  information and disbelieved it, so the fix was assertion, not information.
 - **2026-08-18** — Uploads: images and PDFs in the chat. `qwen3.5-flash` takes image
   input natively (verified live: a synthetic playlist screenshot transcribed
   character-perfect through the same `_llm()` the agent uses), so no second model and
