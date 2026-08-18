@@ -22,6 +22,7 @@ from langchain_core.messages import ToolMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
 from langchain_openai import ChatOpenAI
+from langgraph.errors import GraphRecursionError
 from langgraph.prebuilt import create_react_agent
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -86,6 +87,9 @@ different words. Never tell the user there is nothing after one empty search.
 The three numbers are not decoration. Moving one off 0.5 makes the tool measure the
 candidates and rank them by how they actually sound, so set them when the request is
 about a feeling.
+For more music by a named artist, use artist_albums and similar_artists;
+search_by_feel is not an artist lookup, and the artist's name as `description`
+mostly matches covers and tributes.
 For what a song says rather than what it is called, use search_by_lyrics. It reads
 every candidate's words, so it is slow and can honestly come back empty. Widen
 `search_terms` if it finds nothing.
@@ -258,24 +262,51 @@ def _config(checkpointer, thread_id):
     return {"configurable": {"thread_id": thread_id}} if checkpointer else None
 
 
+MAX_ROUNDS = 20  # tool rounds in one turn; past this the model is looping, not working
+
+
+def _call_key(calls: list[dict]) -> str:
+    """One round of tool calls as a comparable string, argument order ignored."""
+    return repr(sorted((c["name"], repr(sorted(c["args"].items()))) for c in calls))
+
+
 async def _drive(graph, config, start, on_part, mode: str, gated: bool) -> list[dict]:
     """Stream until the turn ends or a tool call needs the user. Returns what waits.
 
     kind is "tool" for a complete tool call, or "token" for a piece of the reply as
     the model writes it. Calls the mode allows are resumed automatically, so only
     gated ones ever stop the turn. An empty list means the turn finished.
+
+    Two brakes live here, because LangGraph's own recursion limit is reset every time
+    a gated graph resumes, which is every auto-approved tool call: a turn that repeats
+    an identical round of calls, or runs past MAX_ROUNDS, has its calls answered with
+    "stop and conclude" instead of results. One request looped 50+ identical
+    search_by_feel calls before these existed.
     """
     inp = start
+    seen: set[str] = set()
+    shown: set[str] = set()  # resuming re-emits the paused state, so dedupe by message id
+    rounds = 0
     while True:
-        async for kind, payload in graph.astream(
-            inp, config, stream_mode=["values", "messages"]
-        ):
-            if kind == "messages":  # token by token, as the model writes
-                if text := _token(payload[0]):
-                    on_part("token", text)
-            elif calls := [p for p in _parts(payload["messages"][-1]) if p[0] == "tool"]:
-                for part in calls:  # replies come from the token stream instead
-                    on_part(*part)
+        try:
+            async for kind, payload in graph.astream(
+                inp, config, stream_mode=["values", "messages"]
+            ):
+                if kind == "messages":  # token by token, as the model writes
+                    if text := _token(payload[0]):
+                        on_part("token", text)
+                    continue
+                last = payload["messages"][-1]
+                if last.id in shown:
+                    continue
+                if calls := [p for p in _parts(last) if p[0] == "tool"]:
+                    shown.add(last.id)
+                    for part in calls:  # replies come from the token stream instead
+                        on_part(*part)
+        except GraphRecursionError:
+            # ungated graphs never pause, so this built-in step cap is their only brake
+            on_part("token", "\n\nStopped: too many steps without an answer.")
+            return []
 
         if not gated:
             # nothing can pause this graph, so the stream ending means the turn ended.
@@ -285,6 +316,34 @@ async def _drive(graph, config, start, on_part, mode: str, gated: bool) -> list[
         if not state.next:  # nothing pending, the model has finished
             return []
         pending = state.values["messages"][-1].tool_calls
+        key = _call_key(pending)
+        rounds += 1
+        if key in seen or rounds > MAX_ROUNDS:
+            if rounds > MAX_ROUNDS + 5:  # told to conclude and still calling: cut it off
+                on_part("token", "\n\nStopped: the model kept repeating tool calls.")
+                return []
+            why = (
+                "This exact call already ran this turn, and its result has not changed."
+                if key in seen
+                else f"This turn has used {MAX_ROUNDS} rounds of tool calls."
+            )
+            await graph.aupdate_state(
+                config,
+                {
+                    "messages": [
+                        ToolMessage(
+                            content=why + " Stop calling tools and answer from what you have.",
+                            tool_call_id=c["id"],
+                            name=c["name"],
+                        )
+                        for c in pending
+                    ]
+                },
+                as_node="tools",
+            )
+            inp = None
+            continue
+        seen.add(key)
         if any(needs_approval(mode, c["name"]) for c in pending):
             return pending
         inp = None  # allowed by the mode, keep going without asking
@@ -385,6 +444,12 @@ async def _selfcheck() -> None:
     assert "valence" in schema and "description" in schema, schema
     assert feel.args_schema.get("required") == ["description"], feel.args_schema
     assert "matching a mood" in feel.description, feel.description
+    # the loop brake's key must ignore argument and call order, or a repeat slips by
+    a = [{"name": "f", "args": {"x": 1, "y": 2}}, {"name": "g", "args": {}}]
+    b = [{"name": "g", "args": {}}, {"name": "f", "args": {"y": 2, "x": 1}}]
+    assert _call_key(a) == _call_key(b), "same round must key identically"
+    assert _call_key(a) != _call_key([{"name": "f", "args": {"x": 9}}]), "different args must differ"
+
     from langchain_core.messages import AIMessage, HumanMessage
 
     big = "x" * 3000

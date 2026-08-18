@@ -143,6 +143,8 @@ def _continue(approve: bool, key: str) -> None:
                     )
                 )
             except Exception as exc:  # noqa: BLE001 - surface model and API failures
+                if type(exc).__module__.startswith("streamlit"):
+                    raise  # a rerun or Stop, not a failure
                 st.error(f"{type(exc).__name__}: {exc}")
                 return
     merged: list[tuple[str, str]] = []
@@ -229,6 +231,11 @@ def _agent_panel() -> None:
     with st.chat_message("user"):
         st.markdown(question)
 
+    # rendered before the blocking call so it is clickable during it. Clicking makes
+    # Streamlit stop this script run at its next st call, which kills the turn; the
+    # handler below then files what had already streamed.
+    st.button("⏹ Stop", help="Abandon this turn")
+
     parts: list[tuple[str, str]] = []
     with st.chat_message("assistant"):
         live = {"text": "", "box": None}
@@ -263,6 +270,13 @@ def _agent_panel() -> None:
                     )
                 )
             except Exception as exc:  # noqa: BLE001 - surface model and API failures
+                if type(exc).__module__.startswith("streamlit"):
+                    # the Stop button (or any interaction) killed the run mid-turn.
+                    # Keep what had streamed, then let Streamlit take the rerun.
+                    flush()
+                    parts.append(("text", "_stopped_"))
+                    st.session_state.chat.append(("assistant", parts))
+                    raise
                 st.error(f"{type(exc).__name__}: {exc}")
                 return
         flush()

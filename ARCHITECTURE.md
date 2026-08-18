@@ -145,6 +145,24 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-18** — A brake on tool loops, and a Stop button. "more dodie songs I
+  don't listen to" ran 50+ near-identical `search_by_feel` calls: the searches came
+  back empty, the prompt says never to give up after one empty search, and nothing
+  braked it, because LangGraph's own 25-step recursion limit resets every time a gated
+  graph resumes, which in afk mode is every auto-approved read. `_drive` now keys each
+  round of calls (order-insensitive) and, on an exact repeat or past 20 rounds, answers
+  the calls with "stop and conclude" instead of results, the same inject-a-ToolMessage
+  mechanism decline uses; five rounds past that it cuts the turn off. Ungated runs get
+  the built-in recursion error caught and reported instead of raised. Fixing this
+  exposed a display bug that had been there all along: resuming re-emits the paused
+  state, so every auto-approved call was reported twice; tool reports are now deduped
+  by message id. The prompt also learned that "more music by an artist" is
+  `artist_albums`/`similar_artists`, not a feel search on the artist's name. The
+  Streamlit chat got a Stop button, which works by Streamlit's own interruption model:
+  it is rendered before the blocking call, clicking it halts the script at the next
+  `st` call, and the handler files what had already streamed as "_stopped_" rather
+  than losing it. The exception handlers had to learn to re-raise Streamlit's
+  control-flow exceptions instead of printing them as errors.
 - **2026-08-17** — Last.fm, found by surveying comparable agents rather than by reading
   Spotify's documentation. `artist.getSimilar` is a working replacement for
   `/related-artists`, which has been 403 here since Feb 2026, so `similar_artists` puts
