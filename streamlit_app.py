@@ -15,6 +15,7 @@ import streamlit as st
 from langgraph.checkpoint.memory import InMemorySaver
 
 import agent
+from psych_mcp import app as psych_app
 from spotify_mcp import app
 
 if __name__ == "__main__" and not st.runtime.exists():
@@ -25,7 +26,14 @@ st.set_page_config(page_title="Spotify MCP", page_icon="🎧", layout="wide")
 
 @st.cache_resource
 def _tools():
-    return asyncio.run(app.list_tools())
+    """Every tool from both servers, plus which server app answers for each name."""
+    home: dict[str, object] = {}
+    listed = []
+    for server in (app, psych_app):
+        for tool in asyncio.run(server.list_tools()):
+            listed.append(tool)
+            home[tool.name] = server
+    return listed, home
 
 
 def _widget(key: str, spec: dict, required: bool):
@@ -309,7 +317,7 @@ def _agent_panel() -> None:
         st.rerun()  # show the approval buttons
 
 
-tools = _tools()
+tools, _home = _tools()
 names = [t.name for t in tools]
 
 st.title("🎧 Spotify MCP")
@@ -345,7 +353,7 @@ if st.button("Run", type="primary"):
     else:
         with st.spinner("calling Spotify..."):
             try:
-                result = asyncio.run(app.call_tool(tool.name, args))
+                result = asyncio.run(_home[tool.name].call_tool(tool.name, args))
             except Exception as exc:  # noqa: BLE001 - surface anything the API throws
                 st.error(f"{type(exc).__name__}: {exc}")
                 if "missing env var" in str(exc):

@@ -35,7 +35,12 @@ SERVERS = {
         "command": sys.executable,
         "args": [os.path.join(HERE, "spotify_mcp.py")],
         "transport": "stdio",
-    }
+    },
+    "psych": {
+        "command": sys.executable,
+        "args": [os.path.join(HERE, "psych_mcp.py")],
+        "transport": "stdio",
+    },
 }
 
 SYSTEM = """<who you are>
@@ -45,11 +50,13 @@ things, and is telling them what they found.
 </who you are>
 
 <always call a tool first>
-You know nothing about this person's music until a tool tells you, and you never know a
-track's link: give every track as a markdown link copied from the `url` a tool returned
-this turn, like [Title](url), then the artist. Never assemble a link from an id or from
-memory; that invents links to the wrong song or to nothing. This held even when the
-answer looked obvious, so it holds always.
+Every answer about this person, their music, their history, or their state of mind
+starts with a tool call this turn. A reply with no tool call behind it is invented,
+and that stays true when the answer feels obvious. The one exception is a follow-up
+about text already in this conversation.
+You never know a track's link: give every track as a markdown link copied from the
+`url` a tool returned this turn, like [Title](url), then the artist. Never assemble a
+link from an id or from memory; that invents links to the wrong song or to nothing.
 Only create a playlist when asked. When you do, say what you were aiming for in its
 description.
 </always call a tool first>
@@ -95,6 +102,9 @@ covers and tributes.
 A name from the list at the end of this prompt is a playlist, not a song: read it with
 playlist_tracks or measure it with playlist_vibe, never search for it as a title.
 For listening history use listening_lyrics, one call, not get_lyrics once per track.
+To read the person rather than the music, score what they have been hearing: feed
+listening_lyrics text to get_big_five and get_emotion_labels. Report the scores as
+estimates from word choice, with the chunk count, and never as a diagnosis.
 </what they already have>
 
 <attachments>
@@ -353,8 +363,9 @@ async def build(checkpointer=None, model: str | None = None, gated: bool = False
         # a paused graph lives in the checkpointer; without one there is nowhere to
         # park, and the approval could never be resumed
         raise ValueError("approval modes need a checkpointer to hold the paused turn")
-    async with MultiServerMCPClient(SERVERS).session("spotify") as session:
-        tools = await load_mcp_tools(session)
+    client = MultiServerMCPClient(SERVERS)
+    async with client.session("spotify") as session, client.session("psych") as psych:
+        tools = await load_mcp_tools(session) + await load_mcp_tools(psych)
         yield create_react_agent(
             _llm(model),
             tools,

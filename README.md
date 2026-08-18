@@ -1,7 +1,7 @@
 # Spotify MCP Server
 
 This is the Spotify tool server for the autonomous Spotify agent.
-It is an MCP server. It gives an agent twenty two tools for the Spotify Web API, LRCLIB, and the web.
+It is an MCP server. There are two servers: this one, and a psych server. Together they give an agent twenty four tools for the Spotify Web API, LRCLIB, and the web.
 For the intent, read [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md).
 For what is built and why, read [ARCHITECTURE.md](ARCHITECTURE.md).
 For what is still owed, read [TODO.md](TODO.md).
@@ -35,6 +35,8 @@ For multi-model plans, read [research/MULTI_MODEL.md](research/MULTI_MODEL.md).
 | `now_playing()` | What is playing right now. |
 | `saved_podcasts(limit)` | Podcasts in the user's library. |
 | `create_playlist(name, track_uris, description)` | Make a private playlist and add the tracks. |
+| `get_big_five(text)` | Five OCEAN trait scores from text, each 0 to 1. Psych server. |
+| `get_emotion_labels(text, top)` | Probabilities over 28 emotions. Psych server. |
 
 `create_playlist` accepts a track URI, a Spotify link, or an ID.
 
@@ -42,7 +44,8 @@ For multi-model plans, read [research/MULTI_MODEL.md](research/MULTI_MODEL.md).
 
 | File | Function |
 |---|---|
-| `spotify_mcp.py` | The MCP server. Start it with `python spotify_mcp.py`. |
+| `spotify_mcp.py` | The Spotify MCP server. Start it with `python spotify_mcp.py`. |
+| `psych_mcp.py` | The psych MCP server: traits and emotions from text. |
 | `agent.py` | The LangGraph agent. It calls the tools through MCP. |
 | `get_token.py` | Mints the refresh token. Run it again when the scopes change. |
 | `bakeoff.py` | Scores models on the agent's job. Run `python bakeoff.py`. |
@@ -98,6 +101,8 @@ you declined. It then chooses another action.
 The server reads three Spotify variables from a `.env` file.
 The agent reads `OPENROUTER_API_KEY` from the same file.
 `LASTFM_API_KEY` is optional. Get one at <https://www.last.fm/api/account/create>.
+`HF_TOKEN` powers the two psych tools. Free, read access, from
+<https://huggingface.co/settings/tokens>.
 Use `.env.example` as the pattern.
 
 1. Open the [Spotify dashboard](https://developer.spotify.com/dashboard).
@@ -149,6 +154,7 @@ Each file has an internal test. Give the `--selfcheck` argument:
 
 ```
 python spotify_mcp.py --selfcheck
+python psych_mcp.py --selfcheck
 python run_tool.py --selfcheck
 python agent.py --selfcheck
 python bakeoff.py --selfcheck

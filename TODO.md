@@ -8,12 +8,10 @@ Done section records what was actually finished.
 
 ## Blocking the abstract
 
-- [ ] **Build the psych/emotion MCP server.** `get_big_five(text)` and
-  `get_emotion_labels(text)` over the Hugging Face Serverless Inference API
-  (`vladinc/bigfive-regression-model`, `SamLowe/roberta-base-go_emotions`).
-  Nothing about trait or emotion inference exists yet, so the entire vibe-drift
-  workflow is blocked on this one item. `listening_lyrics` already returns the
-  text it needs, so this is the last missing piece of workflow 1.
+- [ ] **Test the psych tools against the live API.** The server is built and wired;
+  every path except the actual model calls is tested. Needs HF_TOKEN in .env, then:
+  score real listening_lyrics output through both tools and check the numbers move
+  between a sad week and a loud one.
 - [ ] **Give the agent durable memory.** Conversation memory exists but is
   in-process only, so it dies with the Streamlit process. The trait trajectory
   needs a store that outlives every thread and restart, or "next week's reading
@@ -224,6 +222,11 @@ Done section records what was actually finished.
   keyword search over a model-written description, plus lyric reranking.
 
 ## Done
+
+- [X] **2026-08-18** — The psych MCP server, the abstract's missing half:
+  get_big_five and get_emotion_labels over HF Inference, chunked and mean-pooled,
+  wired into the agent as a second stdio server. Big Five runs on a substitute
+  model because the abstract's is not served by any provider.
 
 - [X] **2026-08-17** — Last.fm wired in: similar_artists replaces the dead
   related-artists endpoint, and playlist_vibe reads a tag per track instead of five

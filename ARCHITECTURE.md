@@ -145,6 +145,28 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-18** — The psych MCP server, which is the abstract's missing half.
+  `psych_mcp.py` exposes `get_big_five` and `get_emotion_labels` over HF Inference,
+  wired into the agent as a second stdio server (one `SERVERS` entry plus a second
+  session in `build()`), and the Tools page routes each tool to its home server.
+  Three things the build surfaced. The abstract's Big Five model
+  (`vladinc/bigfive-regression-model`) is served by no provider, so Big Five runs on
+  `Minej/bert-base-personality`, which is warm; checked by probing the hub's
+  `inference` field, not by reading docs. That model ships no label names, the API
+  answers `LABEL_0..4`, and the order comes from its model card. And the API's default
+  softmax was silently wrong for it: the card's five traits are independent sigmoids,
+  so the scores summed to 1 and competed; `function_to_apply: "sigmoid"` fixes it.
+  Text is scored in ~1,500-char chunks and mean-pooled with the chunk count reported,
+  because BERT truncates at 512 tokens and a single call would score one song and call
+  it the week. Honest reading of the first live numbers: emotions discriminate
+  sharply (sadness 0.898 on a sad text, joy 0.855 on a euphoric one), Big Five barely
+  moves on short text, which is what trait models are supposed to do; it needs the
+  long aggregates the abstract intended. Workflow 1 now runs end to end:
+  `listening_lyrics → get_emotion_labels → get_big_five → interpretation`, three of
+  three runs after the prompt's tool-first rule was re-sharpened. The dedupe had left
+  it leading with links, and a "where's my head at" reply needs no links, so half the
+  runs answered with zero tools and an invented reading. The rule now opens with
+  "every answer about this person starts with a tool call this turn".
 - **2026-08-18** — The prompt deduplicated against the tool docstrings, 1,157 tokens
   to 885. Docstrings ride the schemas into every request, and three blocks of SYSTEM
   restated them nearly verbatim: search_by_feel's mechanics, search_by_lyrics' whole
