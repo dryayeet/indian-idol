@@ -1,7 +1,7 @@
 # Spotify MCP Server
 
 This is the Spotify tool server for the autonomous Spotify agent.
-It is an MCP server. It gives an agent twenty one tools for the Spotify Web API, LRCLIB, and the web.
+It is an MCP server. It gives an agent twenty two tools for the Spotify Web API, LRCLIB, and the web.
 For the intent, read [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md).
 For what is built and why, read [ARCHITECTURE.md](ARCHITECTURE.md).
 For what is still owed, read [TODO.md](TODO.md).
@@ -23,6 +23,7 @@ For multi-model plans, read [research/MULTI_MODEL.md](research/MULTI_MODEL.md).
 | `my_playlists(limit)` | List the playlists the user owns or follows. |
 | `playlist_names()` | Just the playlist titles. The agent reads this into its prompt. |
 | `playlist_tracks(playlist, limit)` | Read a playlist by name, id, URI, or link. Returns its title and tracks. |
+| `track_features(track, artist)` | Measured features of one track: valence, energy, tempo... |
 | `playlist_vibe(playlist, genres)` | Measure how a playlist sounds: mood, spread, artists, genres. |
 | `followed_artists(limit)` | Artists the user follows. Names only. |
 | `top_artists(limit, time_range)` | Most-played artists. |

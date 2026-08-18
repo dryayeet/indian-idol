@@ -145,6 +145,16 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-18** — `track_features`: the numbers for one track. Asked for the valence
+  of a named song, the agent correctly said no tool covered a single track, then
+  guessed anyway, "likely 0.4-0.5" for a song whose measured valence is 0.167, and
+  invented advice about the Spotify web player displaying features. The measurement
+  machinery existed (`_features` over ReccoBeats) but only playlists could use it. The
+  tool resolves a name through search with the same relevance guard as
+  `search_by_feel`, since Spotify answers even nonsense with arbitrary tracks and a
+  wrong match here returns a real song's numbers for a song that does not exist. An
+  unmeasured track answers `measured: false` with an instruction not to guess, which
+  is ordinary for non-Western catalogues, not an error.
 - **2026-08-18** — The search loop had three fuels, and the exact-repeat brake only
   cut one. Results always fed back to the model verbatim; what was missing was anything
   evaluative. Fuel one was an instruction: "never tell the user there is nothing after

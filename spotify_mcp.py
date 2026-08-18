@@ -685,6 +685,35 @@ def _genres(names: list[str]) -> list[str]:
 
 
 @app.tool()
+def track_features(track: str, artist: str = "") -> dict:
+    """Measured audio features for one track: valence, energy, acousticness, and more.
+
+    Takes a track name (artist sharpens the match), or a track id, URI, or link.
+    `measured: false` means the track is not in the features catalogue, which is
+    common outside Western music. That is an ordinary answer: report it, and never
+    substitute guessed numbers for missing ones.
+    """
+    tid = _bare_id(track)
+    if _IS_ID(tid):
+        t = _track(_call("GET", f"/tracks/{tid}"))
+    else:
+        found = _search_tracks(f"{track} {artist}".strip(), 1)
+        # Spotify answers even nonsense with arbitrary tracks, so an unrelated match
+        # would return a real song's numbers for a song that does not exist
+        if not found or not _relevant(found[0], _terms(track) or [track.lower()]):
+            raise RuntimeError(f"no track found for {track!r} {artist!r}".strip())
+        t = found[0]
+        tid = t["url"].rsplit("/", 1)[-1]
+    f = _features([t])
+    if tid not in f:
+        return t | {"measured": False,
+                    "note": "not in the features catalogue; do not guess the numbers"}
+    keep = ("valence", "energy", "acousticness", "danceability", "instrumentalness",
+            "liveness", "speechiness", "tempo", "loudness")
+    return t | {"measured": True} | {k: round(f[tid][k], 3) for k in keep if k in f[tid]}
+
+
+@app.tool()
 def playlist_vibe(playlist: str, genres: bool = True) -> dict:
     """Measure how a playlist actually sounds: its mood, its spread, and its genres.
 
