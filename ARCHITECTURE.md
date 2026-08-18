@@ -145,6 +145,19 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-18** — The prompt deduplicated against the tool docstrings, 1,157 tokens
+  to 885. Docstrings ride the schemas into every request, and three blocks of SYSTEM
+  restated them nearly verbatim: search_by_feel's mechanics, search_by_lyrics' whole
+  paragraph, and all of the web block. One real contradiction fell out: the prompt
+  bounded search retries at two or three phrasings while search_by_feel's docstring
+  still said "try different words rather than presenting nothing", unbounded, arguing
+  for last week's loop. The bound now lives in the docstrings. What stayed is
+  everything traceable to a fixed bug: the voice rules, the tool-first and link rules,
+  the playlist-name rule, the artist-routing rule, the attachment assertion. The four
+  protected behaviours were re-run after the cut and all hold, including the best
+  version of the "more dodie songs I don't listen to" turn yet seen: it read the
+  user's liked, top and recent tracks, then dodie's albums, and diffed them, which is
+  the request actually answered.
 - **2026-08-18** — `track_features`: the numbers for one track. Asked for the valence
   of a named song, the agent correctly said no tool covered a single track, then
   guessed anyway, "likely 0.4-0.5" for a song whose measured valence is 0.167, and

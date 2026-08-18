@@ -284,8 +284,8 @@ def search_by_feel(
 
     Results are filtered to tracks whose title or artist actually carries a word
     from the description, because Spotify answers even a nonsense query with
-    arbitrary tracks. An empty list therefore means nothing matched: try different
-    words rather than presenting nothing.
+    arbitrary tracks. An empty list means those words matched nothing: try a second
+    phrasing, at most a third, then report the miss honestly instead of searching on.
     """
     # Spotify's own /audio-features and /recommendations are 403 for new apps since
     # 2024-11-27, so the description still does the searching. ReccoBeats then ranks
@@ -351,7 +351,8 @@ def search_by_lyrics(
     phrase: the words or ideas that should appear in the words of the song, e.g.
         "leaving town headlights never coming back".
     search_terms: optional title-like words used to pull the candidate pool from
-        Spotify. Defaults to the phrase. Widen this if results come back empty.
+        Spotify. Defaults to the phrase. Widen this once if results come back empty;
+        an empty result after that is the answer, not a reason to search again.
     candidates: how many Spotify results to fetch lyrics for. More is slower.
 
     Slow: it reads the lyrics of every candidate, one request each. Unlike
