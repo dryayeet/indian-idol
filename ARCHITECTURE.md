@@ -43,7 +43,7 @@ stays usable by any MCP client, not just this agent.
 
 | File | Role | Entry point |
 |---|---|---|
-| [spotify_mcp.py](spotify_mcp.py) | MCP server. Nine tools, token refresh, HTTP retries. | `python spotify_mcp.py` (stdio) |
+| [spotify_mcp.py](spotify_mcp.py) | MCP server. The tools, token refresh, HTTP retries. | `python spotify_mcp.py` (stdio) |
 | [agent.py](agent.py) | LangGraph `create_react_agent`. Launches the server over stdio, reads its tool list, loops model ↔ tools. | `python agent.py "..."` |
 | [ui_check.py](ui_check.py) | Runs the Streamlit app under its own test harness and asserts the mode controls agree. No model calls. | `python ui_check.py` |
 | [bakeoff.py](bakeoff.py) | Scores models on the four cases that matter here: right tool, no forbidden writes, no repeated calls, usable answer. | `python bakeoff.py` |
@@ -145,6 +145,24 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-18** — Uploads: images and PDFs in the chat. `qwen3.5-flash` takes image
+  input natively (verified live: a synthetic playlist screenshot transcribed
+  character-perfect through the same `_llm()` the agent uses), so no second model and
+  no routing. The design is read-once: `prepare_upload` makes one vision call whose
+  full reading rides the message's `additional_kwargs`; the first turn sends real
+  pixels, and the shrink hook thereafter swaps the image block for the reading, so a
+  screenshot costs its tokens once, not every turn. Verified: turn two answered "what
+  did the bottom line say" exactly, with zero image blocks resent. PDFs are pypdf text
+  per page, and a page with no text but an embedded image (any phone scan) is
+  vision-read instead of silently dropped, which is what `extract_text()` alone does;
+  capped at twelve scanned pages. Uploads never touch the MCP server: they are
+  conversation context, not tools. One hallucination surfaced in testing: given a
+  screenshot, the model claimed measurements without calling any tool, so the prompt
+  now says an attachment is what the user showed you, not a tool result, and numbers
+  still come from tools. After that it read the screenshot, named the playlist, and
+  measured the real one with `playlist_vibe`. The main use is the API wall: a Blend or
+  a friend's playlist is unreadable through Spotify but perfectly readable as a
+  screenshot.
 - **2026-08-18** — A brake on tool loops, and a Stop button. "more dodie songs I
   don't listen to" ran 50+ near-identical `search_by_feel` calls: the searches came
   back empty, the prompt says never to give up after one empty search, and nothing

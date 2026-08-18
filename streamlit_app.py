@@ -215,21 +215,44 @@ def _agent_panel() -> None:
             _continue(approve=approved, key=key)
             return
 
-    question = st.chat_input("a request, or /manual /afk /auto /mode")
-    if not question:
+    raw = st.chat_input(
+        "a request, or /manual /afk /auto /mode",
+        accept_file="multiple",
+        file_type=["png", "jpg", "jpeg", "webp", "pdf"],
+    )
+    if not raw:
         return
+    # with accept_file on, the widget returns an object; AppTest still sends a str
+    question = (getattr(raw, "text", None) or (raw if isinstance(raw, str) else "")).strip()
+    files = list(getattr(raw, "files", None) or [])
 
-    if question.startswith("/"):
+    if question.startswith("/") and not files:
         _command(question)
         return
     if not key:
         st.warning("An OpenRouter key is needed to run the agent.")
         return
     os.environ[agent.KEY_VAR] = key  # agent._llm() reads it at call time
+    if not question:
+        question = "Look at what I attached and tell me what you make of it."
 
-    st.session_state.chat.append(("user", question))
+    shown = question + "".join(f"\n\n:paperclip: `{f.name}`" for f in files)
+    st.session_state.chat.append(("user", shown))
     with st.chat_message("user"):
-        st.markdown(question)
+        st.markdown(shown)
+
+    attachments = []
+    if files:
+        # each image costs one vision call here; the reading it produces is what
+        # later turns see instead of the pixels
+        with st.spinner("reading what you attached..."):
+            try:
+                attachments = [agent.prepare_upload(f.name, f.getvalue()) for f in files]
+            except Exception as exc:  # noqa: BLE001 - a bad file should not eat the turn
+                if type(exc).__module__.startswith("streamlit"):
+                    raise
+                st.error(f"could not read an attachment: {exc}")
+                return
 
     # rendered before the blocking call so it is clickable during it. Clicking makes
     # Streamlit stop this script run at its next st call, which kills the turn; the
@@ -267,6 +290,7 @@ def _agent_panel() -> None:
                         checkpointer=_memory(),
                         thread_id=st.session_state.thread,
                         mode=st.session_state.mode,
+                        attachments=attachments,
                     )
                 )
             except Exception as exc:  # noqa: BLE001 - surface model and API failures

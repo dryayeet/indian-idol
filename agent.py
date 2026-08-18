@@ -18,7 +18,7 @@ import sys
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
 from langchain_openai import ChatOpenAI
@@ -103,6 +103,14 @@ For listening history use listening_lyrics, which collects tracks and their word
 one call. Do not call get_lyrics once per track.
 </reading what they already have>
 
+<attachments>
+An uploaded image or pdf arrives already read: its text is in the message. Treat it as
+what the user showed you, not as a tool result. Numbers about how music sounds, and
+anything about what is in the user's library, still come from tools: never state a
+measurement or a count you did not see a tool return this turn. A screenshot of a
+playlist the user owns is an invitation to measure the real playlist.
+</attachments>
+
 <the web>
 web_search is for context Spotify does not carry: what a song is about, who an artist
 is, what a lyric refers to. Use it when a claim you want to make would otherwise be a
@@ -166,6 +174,111 @@ def _parts(message) -> list[tuple[str, str]]:
     return [("text", text.strip())] if text.strip() else []
 
 
+UPLOAD_DIM = 1280  # longest image side sent to the model; screenshots stay readable
+PDF_VISION_PAGES = 12  # vision-read at most this many scanned pages, then say so
+PDF_KEEP = 3000  # chars of an attached pdf kept in turns after the first
+
+READING_PROMPT = (
+    "Read this image completely. Transcribe every piece of legible text exactly as "
+    "written, keeping the order and structure. Then say what the image is (a playlist, "
+    "a poster, a chat, album art...) and note anything else informative: names, "
+    "numbers, dates, artwork. Your reading becomes the permanent record of this image "
+    "for the rest of the conversation, so leave nothing legible out."
+)
+
+
+def _shrunk_image(data: bytes) -> tuple[str, str]:
+    """Image bytes as (base64, mime), downscaled. A phone screenshot is megabytes."""
+    import base64
+    import io
+
+    from PIL import Image
+
+    img = Image.open(io.BytesIO(data))
+    img.thumbnail((UPLOAD_DIM, UPLOAD_DIM))
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=85)
+    return base64.b64encode(buf.getvalue()).decode(), "image/jpeg"
+
+
+def _read_image(b64: str, mime: str, model: str | None = None) -> str:
+    """One vision call producing the full reading that outlives the pixels."""
+    reply = _llm(model).invoke(
+        [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": READING_PROMPT},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                ],
+            }
+        ]
+    )
+    text = reply.content
+    if isinstance(text, list):
+        text = "".join(b.get("text", "") for b in text if isinstance(b, dict))
+    return text.strip()
+
+
+def prepare_upload(name: str, data: bytes, model: str | None = None) -> dict:
+    """A chat upload as an attachment dict the turn can carry.
+
+    Images: {"kind": "image", "name", "b64", "mime", "reading"} — the raw pixels ride
+    the first turn, the reading replaces them afterwards.
+    PDFs: {"kind": "pdf", "name", "text"} — text per page; a page with no text but an
+    embedded image (any scan) is vision-read rather than silently dropped, which is
+    what pypdf's extract_text alone would do.
+    """
+    if not name.lower().endswith(".pdf"):
+        b64, mime = _shrunk_image(data)
+        return {"kind": "image", "name": name, "b64": b64, "mime": mime,
+                "reading": _read_image(b64, mime, model)}
+
+    import io
+
+    from pypdf import PdfReader
+
+    parts: list[str] = []
+    scans = 0
+    for n, page in enumerate(PdfReader(io.BytesIO(data)).pages, 1):
+        text = (page.extract_text() or "").strip()
+        if len(text) < 40 and page.images:  # a scan: the content is the picture
+            if scans >= PDF_VISION_PAGES:
+                parts.append(f"[page {n}: scanned, not read - page limit reached]")
+                continue
+            scans += 1
+            for im in page.images:
+                b64, mime = _shrunk_image(im.data)
+                parts.append(f"[page {n}, scanned, read as:]\n{_read_image(b64, mime, model)}")
+        elif text:
+            parts.append(f"[page {n}]\n{text}")
+    return {"kind": "pdf", "name": name, "text": "\n\n".join(parts) or "[empty pdf]"}
+
+
+def _user_message(question: str, attachments: list[dict] | None):
+    """The turn's opening message. Plain text unless something was attached."""
+    if not attachments:
+        return ("user", question)
+    blocks: list[dict] = [{"type": "text", "text": question}]
+    readings: list[str] = []
+    for a in attachments:
+        if a["kind"] == "image":
+            blocks.append(
+                {"type": "image_url",
+                 "image_url": {"url": f"data:{a['mime']};base64,{a['b64']}"}}
+            )
+            readings.append(a["reading"])
+        else:
+            blocks.append(
+                {"type": "text",
+                 "text": f'<attached pdf "{a["name"]}">\n{a["text"]}\n</attached>'}
+            )
+    # readings ride the message so the shrink hook can swap them in later turns
+    return HumanMessage(content=blocks, additional_kwargs={"readings": readings})
+
+
 STUB_OVER = 400  # leave small tool results alone; the savings are not worth the churn
 
 
@@ -193,6 +306,32 @@ def _shrink_old_tools(state: dict) -> dict:
                     id=m.id,
                 )
             )
+        elif m.type == "human" and i < current_turn and isinstance(m.content, list):
+            # an upload's first turn carried real pixels; from here on the model gets
+            # the stored reading instead, and long pdf text is cut to its head
+            readings = iter((getattr(m, "additional_kwargs", None) or {}).get("readings") or [])
+            blocks = []
+            for b in m.content:
+                if not isinstance(b, dict):
+                    blocks.append(b)
+                elif b.get("type") == "image_url":
+                    read = next(readings, "an image, already read earlier this chat")
+                    blocks.append(
+                        {"type": "text",
+                         "text": f"[attached image, previously read in full:]\n{read}"}
+                    )
+                elif (
+                    b.get("type") == "text"
+                    and b["text"].startswith("<attached pdf")
+                    and len(b["text"]) > PDF_KEEP
+                ):
+                    blocks.append(
+                        {"type": "text",
+                         "text": b["text"][:PDF_KEEP] + "\n[pdf cut here for this turn]"}
+                    )
+                else:
+                    blocks.append(b)
+            trimmed.append(HumanMessage(content=blocks, id=m.id))
         else:
             trimmed.append(m)
     return {"llm_input_messages": trimmed}
@@ -372,12 +511,14 @@ async def run(
         )
 
 
-async def turn(question, on_part, *, checkpointer, thread_id, mode="afk", **kw):
-    """One user message. Returns the tool calls waiting for approval, if any."""
+async def turn(
+    question, on_part, *, checkpointer, thread_id, mode="afk", attachments=None, **kw
+):
+    """One user message, with any uploads. Returns the tool calls waiting, if any."""
     gated = mode != "auto"
     async with build(checkpointer, kw.get("model"), gated) as g:
         config = _config(checkpointer, thread_id)
-        start = {"messages": [("user", question)]}
+        start = {"messages": [_user_message(question, attachments)]}
         return await _drive(g, config, start, on_part, mode, gated)
 
 

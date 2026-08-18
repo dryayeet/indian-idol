@@ -130,6 +130,18 @@ Start `run_tool.py` with no arguments for the interactive mode.
 The MCP server writes no output to the screen. This is correct.
 It waits for a client on stdin.
 
+## Uploads
+
+The chat accepts files with the paperclip: images (png, jpg, webp) and PDF.
+An image is read in full by the model once, on upload. The first turn sees the
+image itself. Later turns see the stored reading instead, so the cost does not
+repeat. The reading is a complete transcription, not a caption.
+A PDF becomes its text, page by page. A page with no text but an embedded
+image, which is what any phone scan is, gets read by the model like an
+uploaded image. At most twelve scanned pages are read; the rest say so.
+A screenshot of a playlist this app cannot reach through the API, such as a
+Blend or a friend's playlist, becomes readable this way.
+
 ## Tests
 
 Each file has an internal test. Give the `--selfcheck` argument:
