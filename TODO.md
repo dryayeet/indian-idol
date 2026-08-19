@@ -63,6 +63,12 @@ Done section records what was actually finished.
   known risk with any cached profile: `now_playing` and `recently_played` are live and
   should always win over the map. Related: [MULTI_MODEL.md](research/MULTI_MODEL.md) on using a
   second cheap model for a narrow job, and the psych profile in the abstract.
+- [ ] **Hindi lyrics score as "neutral" emotion.** The length bug is fixed, but
+  go_emotions is trained on English Reddit: pure Devanagari comes back neutral 0.84
+  because the model cannot read it, not because the song is calm. Half this library is
+  Hindi film music, so this quietly understates emotion for the listening that matters
+  most here. Options: a multilingual emotion model if a served one exists, or
+  translating lyrics before scoring, which adds a call but reuses the pipeline.
 - [ ] **Watch the zero-tool fabrication.** Twice now the model answered from nothing:
   fabricated Spotify links when the few-shot block was in the prompt, and an invented
   psychological reading when the tool-first rule briefly led with links. Both times a

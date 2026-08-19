@@ -98,8 +98,13 @@ def _copy_button(text: str) -> None:
     """
     payload = json.dumps(text).replace("</", "<\\/")
     st.iframe(
-        f"""<button id="b" title="copy reply" style="font: 15px sans-serif;
-            padding: 2px 10px; border: 1px solid #d0d0d0; border-radius: 6px;
+        f"""<style>
+        /* the iframe body ships an 8px margin, which pushed the button out of the
+           viewport and drew scrollbars around a clipped chip */
+        body {{ margin: 0; overflow: hidden; }}
+        </style>
+        <button id="b" title="copy reply" style="font: 15px sans-serif;
+            padding: 2px 10px; border: 1px solid #80849555; border-radius: 6px;
             background: transparent; cursor: pointer;">&#128203;</button>
         <script>
         const text = {payload};

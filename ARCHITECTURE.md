@@ -145,6 +145,19 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-19** — The psych tools choked on Hindi, and the excuse the agent gave
+  ("a technical limit on text length") was a real bug. CHUNK was sized for English at
+  roughly four characters per token, but Devanagari tokenises several times denser:
+  1,450 chars measured 2,167 tokens against the 512 limit, and the API answered 400.
+  The recovery reads the true token count out of the error message and re-cuts the
+  chunk to fit, re-queued, so dense scripts are scored in full rather than erroring or
+  being silently truncated at 512; server-side truncation is the floor only for a
+  piece under 250 chars. The two models phrase the same error differently (roberta
+  "expanded size of the tensor (N)", bert "size of tensor a (N)"), which the parser
+  learned the hard way. A limitation remains that no plumbing can fix: go_emotions is
+  English-trained, so pure Devanagari scores near "neutral" rather than its actual
+  emotion. Logged in TODO; the fix is a multilingual emotion model or scoring
+  translations, not more chunking.
 - **2026-08-18** — A copy button under every finished reply. Streamlit has no
   clipboard call, so it is a small HTML component: clipboard API first, execCommand
   fallback for browsers that refuse the API inside the component iframe, text escaped
