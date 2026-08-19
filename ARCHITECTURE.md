@@ -145,6 +145,32 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-19** — Arrow-key history removed at the user's call, after two rounds of
+  it not working in their browser while passing the Playwright E2E. The injected-JS
+  approach it required (Streamlit cannot pre-fill its chat bar from Python) made every
+  failure invisible and every fix unverifiable except by full browser automation,
+  which is the wrong cost for a convenience. The copy button stays; it is
+  self-contained in its own iframe and does not touch the parent page. The two entries
+  below record what was learned building it.
+- **2026-08-19** — Arrow-key history reported dead, and the diagnosis needed a real
+  browser: Playwright now drives the actual app headless, which the AppTest harness
+  cannot do for anything JavaScript. The E2E showed the feature itself worked, and the
+  real gap was scope: history only held the current session's queries, so after the
+  restart the fix required, the list was empty and the arrows correctly did nothing.
+  History now persists to .chat_history.json (gitignored, last 50, repeats collapsed
+  like a shell), loaded at session start, so the arrows work across restarts the way
+  Claude Code's do. Verified end to end: fresh session, zero messages sent, up-up-down
+  cycles the seeded file. Also learned: the app's first browser render takes ~45s cold,
+  which made three probes conclude wrongly that the page was broken.
+- **2026-08-19** — Arrow-key history in the chat bar, terminal style. Streamlit cannot
+  pre-fill `st.chat_input`, so a 1px `st.iframe` reaches the parent page (same-origin
+  access is part of that API's contract) and installs one keydown listener: ArrowUp in
+  an empty bar cycles back through past queries, ArrowDown forward and back to empty,
+  drafts never clobbered. The fill uses the native value setter plus a synthetic input
+  event, because the bar is React-controlled and ignores plain .value writes. Leans on
+  the textarea's data-testid, so a future Streamlit rename fails soft: the arrows just
+  stop working. Slash commands are excluded from the history; the last 50 queries ride
+  each rerun.
 - **2026-08-19** — The psych tools choked on Hindi, and the excuse the agent gave
   ("a technical limit on text length") was a real bug. CHUNK was sized for English at
   roughly four characters per token, but Devanagari tokenises several times denser:
