@@ -145,6 +145,12 @@ with everything else still owed, is [TODO.md](TODO.md).
 
 ## Changelog
 
+- **2026-08-18** — A copy button under every finished reply. Streamlit has no
+  clipboard call, so it is a small HTML component: clipboard API first, execCommand
+  fallback for browsers that refuse the API inside the component iframe, text escaped
+  as a JS literal with "</" broken so a reply containing "</script>" cannot end the
+  script early. The turn path now always reruns on completion, making history the
+  single render path, which is what puts the button under the newest reply.
 - **2026-08-18** — The psych MCP server, which is the abstract's missing half.
   `psych_mcp.py` exposes `get_big_five` and `get_emotion_labels` over HF Inference,
   wired into the agent as a second stdio server (one `SERVERS` entry plus a second

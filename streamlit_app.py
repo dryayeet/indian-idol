@@ -12,6 +12,7 @@ import os
 import uuid
 
 import streamlit as st
+import streamlit.components.v1 as components
 from langgraph.checkpoint.memory import InMemorySaver
 
 import agent
@@ -85,6 +86,44 @@ def _draw(parts) -> None:
             st.code(text, language="python")
         else:
             st.markdown(text)
+
+
+def _copy_button(text: str) -> None:
+    """A one-click copy button under a finished reply.
+
+    Rendered as a tiny HTML component because Streamlit has no clipboard call of its
+    own. The component lives in an iframe, where some browsers refuse the clipboard
+    API, so the old execCommand path is the fallback; between them every browser is
+    covered. json.dumps makes the text a safe JS literal, and the "</" escape stops
+    a literal </script> inside a reply from ending the script block early.
+    """
+    payload = json.dumps(text).replace("</", "<\\/")
+    components.html(
+        f"""<button id="b" style="font: 13px sans-serif; padding: 2px 12px;
+            border: 1px solid #d0d0d0; border-radius: 6px; background: transparent;
+            color: #808495; cursor: pointer;">copy</button>
+        <script>
+        const text = {payload};
+        const b = document.getElementById("b");
+        const flash = () => {{
+            b.textContent = "copied";
+            setTimeout(() => b.textContent = "copy", 1200);
+        }};
+        b.onclick = async () => {{
+            try {{ await navigator.clipboard.writeText(text); flash(); }}
+            catch (e) {{
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                ta.remove();
+                flash();
+            }}
+        }};
+        </script>""",
+        height=34,
+    )
 
 
 HELP = (
@@ -208,6 +247,9 @@ def _agent_panel() -> None:
             # whose value Streamlit's magic renders (st.markdown returns a DeltaGenerator)
             if role == "assistant":
                 _draw(parts)
+                # the answer text only, not the tool-call lines
+                if reply := "\n\n".join(t for k, t in parts if k == "text").strip():
+                    _copy_button(reply)
             else:
                 st.markdown(parts)
 
@@ -313,8 +355,9 @@ def _agent_panel() -> None:
                 return
         flush()
     st.session_state.chat.append(("assistant", parts))
-    if st.session_state.pending:
-        st.rerun()  # show the approval buttons
+    # always rerun: history becomes the single render path, which shows the approval
+    # buttons when calls wait, and gives the finished reply its copy button
+    st.rerun()
 
 
 tools, _home = _tools()
