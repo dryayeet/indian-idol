@@ -12,7 +12,6 @@ import os
 import uuid
 
 import streamlit as st
-import streamlit.components.v1 as components
 from langgraph.checkpoint.memory import InMemorySaver
 
 import agent
@@ -91,23 +90,23 @@ def _draw(parts) -> None:
 def _copy_button(text: str) -> None:
     """A one-click copy button under a finished reply.
 
-    Rendered as a tiny HTML component because Streamlit has no clipboard call of its
-    own. The component lives in an iframe, where some browsers refuse the clipboard
-    API, so the old execCommand path is the fallback; between them every browser is
-    covered. json.dumps makes the text a safe JS literal, and the "</" escape stops
-    a literal </script> inside a reply from ending the script block early.
+    Rendered as a tiny HTML iframe because Streamlit has no clipboard call of its
+    own. Some browsers refuse the clipboard API inside an iframe, so the old
+    execCommand path is the fallback; between them every browser is covered.
+    json.dumps makes the text a safe JS literal, and the "</" escape stops a literal
+    </script> inside a reply from ending the script block early.
     """
     payload = json.dumps(text).replace("</", "<\\/")
-    components.html(
-        f"""<button id="b" style="font: 13px sans-serif; padding: 2px 12px;
-            border: 1px solid #d0d0d0; border-radius: 6px; background: transparent;
-            color: #808495; cursor: pointer;">copy</button>
+    st.iframe(
+        f"""<button id="b" title="copy reply" style="font: 15px sans-serif;
+            padding: 2px 10px; border: 1px solid #d0d0d0; border-radius: 6px;
+            background: transparent; cursor: pointer;">&#128203;</button>
         <script>
         const text = {payload};
         const b = document.getElementById("b");
         const flash = () => {{
-            b.textContent = "copied";
-            setTimeout(() => b.textContent = "copy", 1200);
+            b.textContent = "\\u2713";
+            setTimeout(() => b.textContent = "\\ud83d\\udccb", 1200);
         }};
         b.onclick = async () => {{
             try {{ await navigator.clipboard.writeText(text); flash(); }}
@@ -122,7 +121,8 @@ def _copy_button(text: str) -> None:
             }}
         }};
         </script>""",
-        height=34,
+        width=64,
+        height=36,
     )
 
 
