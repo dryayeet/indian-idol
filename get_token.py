@@ -13,6 +13,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import httpx
+from dotenv import load_dotenv
 
 REDIRECT = "http://127.0.0.1:8888/callback"
 SCOPES = (
@@ -25,6 +26,7 @@ SCOPES = (
     "user-read-playback-state"  # now_playing
 )
 ENV = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+load_dotenv(ENV)
 
 result: dict[str, str] = {}
 
