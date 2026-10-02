@@ -29,6 +29,8 @@ Run the offline checks before opening a pull request:
 
 ```powershell
 python -m compileall -q agent.py spotify_mcp.py psych_mcp.py streamlit_app.py run_tool.py get_token.py benchmarks tests
+python psych_mcp.py --selfcheck
+python -m unittest -v tests.test_psych
 python benchmarks/bakeoff.py --selfcheck
 python benchmarks/bakeoff_jev.py --selfcheck
 python benchmarks/bakeoff_jev_40.py --selfcheck

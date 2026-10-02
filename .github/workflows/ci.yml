@@ -26,6 +26,11 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q agent.py spotify_mcp.py psych_mcp.py streamlit_app.py run_tool.py get_token.py benchmarks tests
 
+      - name: Run psych checks
+        run: |
+          python psych_mcp.py --selfcheck
+          python -m unittest -v tests.test_psych
+
       - name: Run benchmark self-checks
         run: |
           python benchmarks/bakeoff.py --selfcheck
