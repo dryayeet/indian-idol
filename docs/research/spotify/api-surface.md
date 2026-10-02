@@ -1,4 +1,4 @@
-# What Spotify still gives us, and what other Spotify MCP servers give
+# Spotify API Surface
 
 Two surveys, done 2026-08-17. The first is what the Web API answers for **this app**,
 probed live with the project's own token rather than read from documentation. The
@@ -46,9 +46,9 @@ Probed with 37 requests against the real account. `OK` means it answered with da
 
 | Endpoint | What happened |
 |---|---|
-| `GET /audio-features/{id}` | 403. Deprecated 2024-11-27. This is why `search_by_feel` matches names, not acoustics. |
+| `GET /audio-features/{id}` | 403. Deprecated 2024-11-27. `search_by_feel` now uses ReccoBeats for partial third-party feature coverage. |
 | `GET /recommendations` | 404. Same deprecation. There is no seed-based recommender. |
-| `GET /artists/{id}/related-artists` | 403. No "artists like this". |
+| `GET /artists/{id}/related-artists` | 403. `similar_artists` uses Last.fm instead. |
 | `GET /artists/{id}/top-tracks` | 403. Removed Feb 2026. |
 | `GET /tracks`, `/artists`, `/albums`, `/shows`, `/episodes` (batch) | 403. Removed Feb 2026. One id per call now. |
 | `GET /browse/new-releases`, `/browse/categories`, `/browse/featured-playlists` | 403. No editorial browse. |
@@ -65,7 +65,7 @@ Probed with 37 requests against the real account. `OK` means it answered with da
 `PUT /me/library` and `DELETE /me/library` replaced every per-type save, unsave,
 follow, and unfollow endpoint. `PUT /playlists/{id}/items` reorders. `DELETE
 /playlists/{id}/items` removes. None are built: this agent reads and creates, and
-nothing else. See the TODO for what a write surface would cost.
+nothing else. See the [roadmap](../../roadmap.md) for what a write surface would cost.
 
 ## 2. What other Spotify MCP servers expose
 
@@ -108,15 +108,15 @@ server still claiming acoustic matching is either grandfathered or guessing.
 network, library stats, query library, sync library to a local index. This is the only
 group that overlaps with what this project is for. Section 4 takes each one apart.
 
-## 4. The analysis tools, checked one by one
+## 3. The analysis tools, checked one by one
 
 Researched and probed 2026-08-17. Three of the six are impossible here, two are free,
 and one turns out to reopen a door this project had written off.
 
 | Tool | Verdict here |
 |---|---|
-| `spotify_artist_network` | **Impossible.** Built on `/related-artists`, which is 403 for us. That server is grandfathered or its README is stale. |
-| `spotify_playlist_vibe` | **Impossible as built.** Its own README says it "estimates energy from genre data rather than audio-features", and genres left the artist object in Feb 2026. Possible against a third-party genre source, see below. |
+| `spotify_artist_network` | **Unavailable through Spotify.** `similar_artists` restores a narrower version through Last.fm. |
+| `spotify_playlist_vibe` | **Built with third-party data.** ReccoBeats supplies partial audio features; Last.fm and MusicBrainz supply tags. |
 | `spotify_artist_deep_dive` | **Half.** `artist_albums` works; `/artists/{id}/top-tracks` is 403 and the artist object is down to a name and images. |
 | `spotify_sync_library` | **Free.** Everything it indexes is already reachable. |
 | `spotify_library_stats` | **Free.** Pure aggregation over the above. |
@@ -145,20 +145,16 @@ The catalogue is Western-biased, and this user's listening is not, so a third of
 most relevant tracks have no features. Any use of it has to treat a miss as normal
 rather than as an error.
 
-That matters because `search_by_feel`'s three numbers currently only nudge one keyword
-onto a text search: they cannot filter, because there was nothing to filter on. With
-ReccoBeats they could rank a candidate list for real. Whether that is worth an extra
-request per search, given a third of the results would be unranked, is the open
-question. Measure before building.
+`search_by_feel` now over-fetches text-search candidates and uses ReccoBeats to rank
+them by feature distance whenever a control moves off 0.5. Missing feature rows are
+kept after measured rows rather than dropped. `playlist_vibe` uses the same source
+to report aggregate sound characteristics.
 
-**Built 2026-08-17.**  ranks by real features whenever a dial is moved
-off 0.5, and  reports what a playlist actually sounds like.
+[Last.fm](https://www.last.fm/api) is the preferred genre source and supplies
+track-level tags when configured. [MusicBrainz](https://musicbrainz.org/ws/2/artist)
+is the keyless, artist-level fallback now that Spotify sends no genres.
 
-[MusicBrainz](https://musicbrainz.org/ws/2/artist) is the matching answer for genres:
-keyless, and it returned eight usable tags for a test artist. It is the only route to
-anything genre-shaped now that Spotify sends none.
-
-## 2b. Agents doing the same job
+## 4. Agents doing the same job
 
 Surveyed 2026-08-17. The finding that matters: **almost all of them are built on
 endpoints that no longer answer**, and most have not noticed.
@@ -179,9 +175,9 @@ fetch-and-rerank. Approval modes. They are recommenders; this one is built to ex
 What they have that this does not: **mood transitions**. "I'm sad and I want to be
 happy" is a request for an arc, and every tool here returns a flat set.
 
-## 3. What is worth taking
+## 5. What is worth taking
 
-In the TODO, in order. Briefly:
+In the [roadmap](../../roadmap.md), in order. Briefly:
 
 1. **Playlist writes** beyond create: add, remove, reorder, rename. The agent can
    build a playlist but cannot revise one, so "drop the last three" is impossible.
@@ -191,6 +187,6 @@ In the TODO, in order. Briefly:
 4. **Playback control**, if the agent should ever act on the mood it infers rather
    than only describe it. Needs Premium and a live device, so it is untestable in CI.
 
-Deliberately not taken: anything built on `/recommendations`, `/related-artists`, or
-audio features, because they do not answer for this app and no amount of code fixes
-that.
+Deliberately not taken: anything that requires Spotify's `/recommendations`, native
+`/related-artists`, or native audio-feature endpoints. Third-party replacements are
+used where their coverage and terms allow it.

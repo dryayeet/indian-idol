@@ -1,8 +1,8 @@
-# Using more than one model
+# Using More Than One Model
 
-Notes for later. Nothing here is built yet; this is the reasoning so it does not
-have to be redone. Written 2026-08-16, grounded in the bake-off data in
-[MODEL_BAKEOFF.md](../MODEL_BAKEOFF.md) and in current published work.
+Design notes written 2026-08-16. Some context has since changed, but the unbuilt
+proposals remain useful. Grounded in the
+[model bake-off](../benchmarks/model-bakeoff.md) and published work.
 
 ## The finding that shapes all of it
 
@@ -21,7 +21,7 @@ tokens.
 
 Not an LLM at all, which is the point.
 
-`_lyric_score` in [spotify_mcp.py](../spotify_mcp.py) counts shared words between the
+`_lyric_score` in [spotify_mcp.py](../../spotify_mcp.py) counts shared words between the
 request and the lyrics, so "headlights" never matches "high beams". A small
 embedding model does paraphrase properly, costs about $0.01 per million tokens, and
 is deterministic and cacheable. Lyrics for a track never change, so the embedding is
@@ -92,8 +92,7 @@ inside a small context. Coordination would buy nothing and cost reliability.
 
 Worth noticing that this project is multi-model in the right way already:
 
-- The psych server (still to build) is two specialist Hugging Face models, not two
-  chat models arguing.
+- The psych server is two specialist Hugging Face models, not two chat models arguing.
 - `search_by_lyrics` reranks locally instead of asking an LLM to rank.
 - `_relevant` and `_feel_query` are plain code where plain code suffices.
 

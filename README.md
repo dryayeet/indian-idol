@@ -1,218 +1,283 @@
-# Spotify MCP Server
+# Spotify Agent
 
-This is the Spotify tool server for the autonomous Spotify agent.
-It is an MCP server. There are two servers: this one, and a psych server. Together they give an agent twenty four tools for the Spotify Web API, LRCLIB, and the web.
-For the intent, read [SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md).
-For what is built and why, read [ARCHITECTURE.md](ARCHITECTURE.md).
-For what is still owed, read [TODO.md](TODO.md).
-For the model choice, read [MODEL_BAKEOFF.md](MODEL_BAKEOFF.md).
-For what the API still allows, read [research/API_SURFACE.md](research/API_SURFACE.md).
-For multi-model plans, read [research/MULTI_MODEL.md](research/MULTI_MODEL.md).
+An affect-aware music assistant built with LangGraph, FastMCP, Streamlit, and the
+Spotify Web API. It combines 22 music and account tools with two Hugging Face
+psychology tools, then exposes them through an agent chat, direct tool forms, and a
+command-line client.
 
-## Tools
+The project can inspect listening history, search by mood or lyrics, analyze tracks
+and playlists, read images and PDFs, and create private playlists with approval
+controls. It is a personal project for one Spotify account, not a multi-user service
+or a clinical assessment tool.
 
-| Tool | Function |
-|---|---|
-| `recently_played(limit)` | Get the tracks that you played last. The maximum is 50. |
-| `top_tracks(limit, time_range)` | Get the tracks that you played most. |
-| `web_search(query, limit)` | Search the web for context Spotify does not carry. |
-| `get_lyrics(track, artist)` | Get the lyrics from LRCLIB. This tool does not use Spotify. |
-| `search_by_feel(description, valence, energy, acousticness, limit)` | Find tracks. The description does the searching. |
-| `listening_lyrics(source, limit, chars)` | Get the lyrics of recent or top tracks in one call. |
-| `search_by_lyrics(phrase, search_terms, candidates, limit)` | Find tracks whose lyrics match. Slower. Can return nothing. |
-| `my_playlists(limit)` | List the playlists the user owns or follows. |
-| `playlist_names()` | Just the playlist titles. The agent reads this into its prompt. |
-| `playlist_tracks(playlist, limit)` | Read a playlist by name, id, URI, or link. Returns its title and tracks. |
-| `track_features(track, artist)` | Measured features of one track: valence, energy, tempo... |
-| `playlist_vibe(playlist, genres)` | Measure how a playlist sounds: mood, spread, artists, genres. |
-| `followed_artists(limit)` | Artists the user follows. Names only. |
-| `top_artists(limit, time_range)` | Most-played artists. |
-| `liked_songs(limit)` | The user's Liked Songs. |
-| `saved_albums(limit)` | Albums in the user's library. |
-| `album_tracks(album)` | The tracks on an album. |
-| `similar_artists(artist, limit)` | Artists that sound like this one. Needs a Last.fm key. |
-| `artist_albums(artist, limit)` | An artist's releases, by name or id. |
-| `now_playing()` | What is playing right now. |
-| `saved_podcasts(limit)` | Podcasts in the user's library. |
-| `create_playlist(name, track_uris, description)` | Make a private playlist and add the tracks. |
-| `get_big_five(text)` | Five OCEAN trait scores from text, each 0 to 1. Psych server. |
-| `get_emotion_labels(text, top)` | Probabilities over 28 emotions. Psych server. |
+## Architecture
 
-`create_playlist` accepts a track URI, a Spotify link, or an ID.
-
-## Files
-
-| File | Function |
-|---|---|
-| `spotify_mcp.py` | The Spotify MCP server. Start it with `python spotify_mcp.py`. |
-| `psych_mcp.py` | The psych MCP server: traits and emotions from text. |
-| `agent.py` | The LangGraph agent. It calls the tools through MCP. |
-| `get_token.py` | Mints the refresh token. Run it again when the scopes change. |
-| `bakeoff.py` | Scores models on the agent's job. Run `python bakeoff.py`. |
-| `MODEL_BAKEOFF.md` | The model results and what they mean. |
-| `research/MULTI_MODEL.md` | Plans for using more than one model. |
-| `research/API_SURFACE.md` | Every endpoint that still answers, and what other Spotify MCP servers do. |
-| `ui_check.py` | Drives the web interface headlessly. Run `python ui_check.py`. |
-| `run_tool.py` | A command-line client. Use it to call one tool. |
-| `streamlit_app.py` | A web interface. It shows all the tools as forms. |
-| `requirements.txt` | The Python packages. |
-
-## Installation
-
-1. Make a virtual environment.
-2. Install the packages with `pip install -r requirements.txt`.
-
-## The agent
-
-`agent.py` is a LangGraph ReAct agent. It starts `spotify_mcp.py` as a subprocess
-and reads the tool list through MCP. The language model comes from OpenRouter.
-
+```text
+Streamlit or CLI
+      |
+      v
+LangGraph agent + OpenRouter
+      |
+      +---------------- MCP over stdio ----------------+
+      |                                                |
+      v                                                v
+Spotify MCP server (22 tools)               Psych MCP server (2 tools)
+      |                                                |
+      + Spotify, LRCLIB, ReccoBeats                    + Hugging Face
+      + Last.fm, MusicBrainz, DuckDuckGo
 ```
+
+Agent mode starts both MCP servers as subprocesses. Streamlit's Tools mode and
+`run_tool.py` call the same FastMCP applications in-process. Conversation state is
+kept in memory and is lost when the process restarts.
+
+See [Architecture](docs/architecture.md) for the full system description.
+
+## Requirements
+
+- Python 3.10 or newer. The dev container uses Python 3.11.
+- A Spotify developer application and refresh token.
+- An OpenRouter API key for the conversational agent.
+- A Hugging Face token for the two psych tools.
+- An optional Last.fm key for similar artists and better genre tags.
+
+Run all commands from the repository root.
+
+## Quick Start
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+```
+
+Fill `.env`, mint the Spotify refresh token, then start the UI:
+
+```powershell
+python get_token.py
+python -m streamlit run streamlit_app.py
+```
+
+The OAuth helper listens on `http://127.0.0.1:8888/callback` and writes the
+Spotify credentials to the root `.env` file. Register that exact redirect URI in
+the Spotify dashboard. Spotify rejects `localhost` for this flow.
+
+## Configuration
+
+| Variable | Required | Used for |
+|---|---|---|
+| `SPOTIFY_CLIENT_ID` | Yes | Spotify OAuth and API access. |
+| `SPOTIFY_CLIENT_SECRET` | Yes | Spotify OAuth and token refresh. |
+| `SPOTIFY_REFRESH_TOKEN` | Yes | Long-lived Spotify account authorization. |
+| `OPENROUTER_API_KEY` | Agent mode | Conversational model and live benchmarks. |
+| `OPENROUTER_MODEL` | No | Tool-capable OpenRouter model override. |
+| `HF_TOKEN` | Psych tools | Big Five and emotion inference. |
+| `LASTFM_API_KEY` | No | Similar artists and track-level genre tags. |
+
+The default model and selection rationale are documented in the
+[model bake-off](docs/benchmarks/model-bakeoff.md).
+
+The Spotify refresh token requests these scopes:
+
+- `user-read-recently-played`
+- `user-top-read`
+- `playlist-modify-private`
+- `playlist-read-private`
+- `user-follow-read`
+- `user-library-read`
+- `user-read-playback-state`
+
+Never commit `.env` or Streamlit secrets. The repository ignore rules cover both.
+
+## Running the Project
+
+Start the web application:
+
+```powershell
+python -m streamlit run streamlit_app.py
+```
+
+Ask the agent one question from the CLI:
+
+```powershell
 python agent.py "songs that feel like driving away from my hometown"
 ```
 
-The agent translates the request into emotion values, then calls the tools.
+Call a Spotify tool directly:
 
-The model comes from OpenRouter. Set `OPENROUTER_MODEL` to change it; it must
-support tool calls. Which model and why: [MODEL_BAKEOFF.md](MODEL_BAKEOFF.md).
-
-## Modes
-
-The chat gives three levels of control over the tools. Change the mode with the
-buttons above the chat bar, or with a slash command in the chat bar. The two stay
-in step: a slash command moves the buttons, and a button press is the same as the
-command.
-
-| Mode | Effect |
-|---|---|
-| `/manual` | Every tool call waits for your approval. |
-| `/afk` | Reads run freely. The three playlist tools wait for you. |
-| `/auto` | All tools run. Nothing waits. |
-
-`/mode` shows the current mode. `/help` lists the commands.
-The mode is `afk` when the chat starts.
-
-A tool that waits does not run. The agent stops before the tool, and shows you the
-call. Approve it, and the agent continues. Decline it, and the agent is told that
-you declined. It then chooses another action.
-
-## Credentials
-
-The server reads three Spotify variables from a `.env` file.
-The agent reads `OPENROUTER_API_KEY` from the same file.
-`LASTFM_API_KEY` is optional. Get one at <https://www.last.fm/api/account/create>.
-`HF_TOKEN` powers the two psych tools. Free, read access, from
-<https://huggingface.co/settings/tokens>.
-Use `.env.example` as the pattern.
-
-1. Open the [Spotify dashboard](https://developer.spotify.com/dashboard).
-2. Make an app. Write down the client ID and the client secret.
-3. Set the redirect URI to `http://127.0.0.1:8888/callback`.
-   Do not use `localhost`. Spotify refuses it.
-4. Get a refresh token with these scopes:
-   `user-read-recently-played`, `user-top-read`, `playlist-modify-private`,
-   `playlist-read-private`, `user-follow-read`, `user-library-read`,
-   and `user-read-playback-state`.
-   Run `python get_token.py` to do this.
-5. Put the three values in the `.env` file.
-
-Keep the `.env` file out of the repository. The `.gitignore` file does this.
-
-## Operation
-
-Start the web interface:
-
-```
-streamlit run streamlit_app.py
-```
-
-Call one tool from the command line:
-
-```
+```powershell
 python run_tool.py get_lyrics track="Motion Sickness" artist="Phoebe Bridgers"
 ```
 
-Start `run_tool.py` with no arguments for the interactive mode.
-The MCP server writes no output to the screen. This is correct.
-It waits for a client on stdin.
+Run `python run_tool.py` with no arguments for interactive tool selection. Starting
+`spotify_mcp.py` or `psych_mcp.py` directly opens an MCP stdio server, so waiting
+silently for a client is expected.
+
+## Approval Modes
+
+| Mode | Behavior |
+|---|---|
+| `/manual` | Every tool call waits for approval. |
+| `/afk` | Most reads run automatically; `my_playlists`, `playlist_tracks`, and `create_playlist` wait. |
+| `/auto` | All tools run without approval. |
+
+The UI starts in AFK mode. `/mode` shows the current mode and `/help` lists the
+available commands. `create_playlist` is the only Spotify write tool.
+
+## Tool Inventory
+
+### Music, Search, and Analysis
+
+| Tool | Purpose |
+|---|---|
+| `search_by_feel` | Search by a short emotional description and optional feature targets. |
+| `search_by_lyrics` | Fetch and rank candidate lyrics for a phrase or theme. |
+| `web_search` | Find music context that Spotify does not provide. |
+| `get_lyrics` | Retrieve one track's lyrics from LRCLIB. |
+| `listening_lyrics` | Collect lyrics from recent or top listening in one call. |
+| `track_features` | Read ReccoBeats audio features for one track. |
+| `playlist_vibe` | Summarize playlist audio features, artists, and optional genres. |
+| `similar_artists` | Find similar artists through Last.fm. |
+| `artist_albums` | List an artist's releases. |
+| `album_tracks` | List tracks from an album. |
+
+### Spotify Account and Library
+
+| Tool | Purpose |
+|---|---|
+| `recently_played` | Read recently played tracks. |
+| `top_tracks` | Read top tracks for a Spotify time range. |
+| `top_artists` | Read top artists for a Spotify time range. |
+| `followed_artists` | List followed artists. |
+| `liked_songs` | List saved tracks. |
+| `saved_albums` | List saved albums. |
+| `saved_podcasts` | List saved podcasts. |
+| `now_playing` | Read the currently playing track. |
+| `my_playlists` | List owned and followed playlists visible to the app. |
+| `playlist_names` | Return playlist names for agent context. |
+| `playlist_tracks` | Read an accessible playlist by name, ID, URI, or URL. |
+| `create_playlist` | Create a private playlist and add tracks. |
+
+### Psychology
+
+| Tool | Purpose |
+|---|---|
+| `get_big_five` | Estimate five OCEAN trait scores from text. |
+| `get_emotion_labels` | Estimate probabilities over 28 emotion labels. |
+
+Psychological outputs are model estimates, not diagnoses. The Big Five endpoint
+returned HTTP 410 during the latest recorded benchmark and should be revalidated
+before relying on it.
 
 ## Uploads
 
-The chat accepts files with the paperclip: images (png, jpg, webp) and PDF.
-An image is read in full by the model once, on upload. The first turn sees the
-image itself. Later turns see the stored reading instead, so the cost does not
-repeat. The reading is a complete transcription, not a caption.
-A PDF becomes its text, page by page. A page with no text but an embedded
-image, which is what any phone scan is, gets read by the model like an
-uploaded image. At most twelve scanned pages are read; the rest say so.
-A screenshot of a playlist this app cannot reach through the API, such as a
-Blend or a friend's playlist, becomes readable this way.
+The Streamlit chat accepts PNG, JPEG, WebP, and PDF files. Images are resized, sent
+through a dedicated vision-reading call, and also attached to the first agent turn.
+Later turns receive only the stored reading. Text PDFs are extracted with `pypdf`.
+Image-only pages are sent through vision, with a limit of 12 scanned pages.
 
-## Tests
+Uploads are model context, not MCP tools. They are useful for screenshots of Spotify
+content the API cannot access, such as Blends or another user's playlist.
 
-Each file has an internal test. Give the `--selfcheck` argument:
+## Project Layout
 
+```text
+.
+|-- agent.py                 # LangGraph agent and upload handling
+|-- spotify_mcp.py           # 22 music and Spotify tools
+|-- psych_mcp.py             # 2 Hugging Face tools
+|-- streamlit_app.py         # chat and direct tool UI
+|-- run_tool.py              # direct Spotify tool CLI
+|-- get_token.py             # Spotify OAuth helper
+|-- benchmarks/              # live evaluation harnesses
+|-- tests/                   # headless UI checks
+|-- docs/                    # current, historical, and research documentation
+|-- artifacts/               # ignored benchmark JSON and logs
+|-- .env.example             # configuration template
+`-- requirements.txt
 ```
+
+Core runtime modules remain at the root because they launch and import each other
+directly. Benchmarks resolve the root explicitly and write generated output only to
+`artifacts/benchmarks/`.
+
+## Documentation
+
+| Document | Purpose |
+|---|---|
+| [Architecture](docs/architecture.md) | Current components, data flow, safety boundary, and gaps. |
+| [Roadmap](docs/roadmap.md) | Planned work, technical debt, and completed milestones. |
+| [Original project proposal](docs/project-abstract.md) | Intended psychological framing and closed-loop design. |
+| [Development log](docs/history/development-log.md) | Historical architecture snapshot and implementation diary. |
+| [Model bake-off](docs/benchmarks/model-bakeoff.md) | Main model evaluation and default-model rationale. |
+| [Jev tool-selection study](docs/benchmarks/jev-tool-selection.md) | Current 41-case routing comparison. |
+| [Jev pilot](docs/benchmarks/archive/jev-pilot.md) | Superseded six-case pilot retained for history. |
+| [Multi-model design](docs/design/multi-model.md) | Embedding, verifier, failover, and cascade analysis. |
+| [Spotify API survey](docs/research/spotify/api-surface.md) | Live endpoint survey and third-party replacements. |
+| [Jev reference notes](docs/research/jev/reference.md) | Imported API research with repository-specific scope notes. |
+| [LinkedIn draft](docs/outreach/linkedin-jev-draft.md) | Outreach draft based on the Jev experiments. |
+| [Intelligence levels](docs/research/models/intelligence-levels.pdf) | Research notes on reasoning budgets and agent loops. |
+| [Image generation](docs/research/chat-ui/image-generation.pdf) | Research notes on image tools and rendering. |
+| [Charts and graphs](docs/research/chat-ui/charts-and-graphs.pdf) | Research notes on chart rendering. |
+| [Document artifacts](docs/research/chat-ui/document-artifacts.pdf) | Research notes on PDF and editable artifact pipelines. |
+| [Quote replies](docs/research/chat-ui/quote-replies.pdf) | Research notes on reply context. |
+| [Message editing](docs/research/chat-ui/message-editing-and-branching.pdf) | Research notes on branching conversation storage. |
+
+The research PDFs describe possible chat-product features. They are not claims about
+features implemented in this repository.
+
+## Benchmarks
+
+The harnesses call live services and may cost money unless run with `--selfcheck`.
+
+```powershell
+python benchmarks/bakeoff.py --selfcheck
+python benchmarks/bakeoff_jev.py --selfcheck
+python benchmarks/bakeoff_jev_40.py --selfcheck
+```
+
+Live results and logs are written under `artifacts/benchmarks/`. That directory is
+local-only and ignored because results are generated, environment-specific, and can
+contain workstation paths or HTTP traces. Curated findings belong in `docs/benchmarks/`.
+
+## Checks
+
+```powershell
 python spotify_mcp.py --selfcheck
 python psych_mcp.py --selfcheck
 python run_tool.py --selfcheck
 python agent.py --selfcheck
-python bakeoff.py --selfcheck
-python ui_check.py
+python benchmarks/bakeoff.py --selfcheck
+python benchmarks/bakeoff_jev.py --selfcheck
+python benchmarks/bakeoff_jev_40.py --selfcheck
+python tests/test_ui.py
 ```
 
-The agent test lists the tools through MCP. It does not call the language model.
+Most self-checks avoid model calls. `agent.py --selfcheck` starts both MCP servers,
+reads Spotify playlist names, and asserts at least one is visible. It requires valid
+Spotify credentials and network access. The UI check uses Streamlit's headless test
+harness and makes no model calls.
 
-## Limits
+## Current Limitations
 
-- The server uses one Spotify account. It has no login for each user.
-  A person who opens the web interface has full control of that account.
-- Spotify stopped the audio-feature endpoints on 27 November 2024.
-  New apps cannot use `/v1/audio-features` or `/v1/recommendations`.
-  The description still does the searching; ReccoBeats does the ranking.
-- Spotify moved two endpoints in February 2026.
-  The server uses `POST /me/playlists` and the `/items` path for playlist tracks.
-- Spotify has no lyrics endpoint. The lyrics come from LRCLIB.
-- No service searches lyrics. `search_by_lyrics` reads the lyrics of each
-  candidate track and ranks them. This costs one request for each candidate.
-- The search endpoint refuses a limit above 10. The server pages with an
-  offset to get more results.
-- The `mcp` package must stay below version 2.0.
-  `langchain-mcp-adapters` does not support version 2.0 yet.
-- The agent remembers a conversation only while the web interface runs.
-  A restart loses the history.
-- Reading the tracks of any playlist needs the `playlist-read-private` scope.
-  This is true even for public playlists.
-- Only the user's own playlists can be read. Playlists that Spotify owns,
-  such as a Blend, a Daily Mix, or Discover Weekly, are not in the list and
-  answer 404 by id. Another user's playlist answers 403. This is permanent.
-- Spotify stopped serving audio features in 2024, so `search_by_feel` and
-  `playlist_vibe` get them from ReccoBeats instead. Coverage is not complete
-  and the gap favours the Western catalogue: 98 percent on a US rap playlist
-  here, 65 percent on Hindi-heavy top tracks. A missing track is normal.
-- The agent puts the user's playlist names into its own prompt at startup.
-  Without them it cannot tell a playlist name from a song title, and it
-  searches for the name instead of reading the playlist. The list is cached
-  for five minutes, so a new playlist appears without a restart.
-- Genres come from Last.fm when `LASTFM_API_KEY` is set, one tag lookup for
-  each track. Without the key they come from MusicBrainz instead, which asks
-  for one request each second and can only read artists, not tracks.
-- Last.fm has few tags for music outside the Western catalogue. A playlist it
-  does not know falls back to MusicBrainz, which takes longer than either
-  source alone.
-  `playlist_vibe` then reads only five artists and takes about seven seconds.
-  Pass `genres=false` for a result in one second either way.
-- `similar_artists` needs the Last.fm key. Spotify's own related-artists
-  endpoint answers 403 for this app, so there is no other route to it.
-- Spotify no longer sends an artist's genres, popularity, or follower count,
-  and it no longer sends a podcast's publisher.
-- `web_search` uses DuckDuckGo through the `ddgs` package. It needs no key.
-  DuckDuckGo limits how often you may search. A burst of searches can fail.
-- The connection to `accounts.spotify.com` can fail.
-  The HTTP client then tries again three times.
+- The app controls one Spotify account and has no per-user login.
+- Conversation state is in memory and disappears on restart.
+- Spotify's recommendation and audio-feature endpoints are unavailable to this app.
+- ReccoBeats restores partial audio features but has uneven catalogue coverage.
+- LRCLIB supplies lyrics because Spotify has no public lyrics endpoint.
+- Spotify-owned playlists and other users' playlists are not readable with this app's credentials.
+- Last.fm coverage is uneven outside Western catalogues; MusicBrainz fallback is slower.
+- DuckDuckGo can rate-limit bursts of web searches.
+- Durable weekly profiles and intervention feedback from the original proposal are not implemented.
+- `mcp` must remain below 2.0 until `langchain-mcp-adapters` supports it.
 
-## Deployment
+## Deployment and Security
 
-You can deploy the web interface to Streamlit Community Cloud.
-Put the three environment variables in the app secrets.
-Make the app private. The app gives full control of your Spotify account.
+Do not expose this application publicly. Anyone who can open the UI can read the
+configured Spotify account and can select auto mode to create playlists. They can
+also spend the configured model-provider credits.
+
+For Streamlit Community Cloud, configure all required Spotify and OpenRouter secrets,
+plus `HF_TOKEN` if psych tools are enabled, and restrict the application to trusted
+viewers. See [SECURITY.md](SECURITY.md) for reporting and handling guidance.

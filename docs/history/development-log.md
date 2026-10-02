@@ -1,12 +1,13 @@
-# Architecture
+# Development Log and Historical Architecture
 
-Living document. Updated 2026-08-16.
+Architecture snapshot from 2026-08-17 followed by a development log through
+2026-08-19. For the current system, see [Architecture](../architecture.md).
 
 For the project's intent and psychological framing, read
-[SPOTIFY_AGENT_ABSTRACT.md](SPOTIFY_AGENT_ABSTRACT.md). This file records what is
+[original project proposal](../project-abstract.md). This file records what was
 actually built, why it is built that way, and what the environment forces.
 
-## Current shape
+## Architecture Snapshot (2026-08-17)
 
 ```
                       ┌───────────────────────────┐
@@ -43,13 +44,13 @@ stays usable by any MCP client, not just this agent.
 
 | File | Role | Entry point |
 |---|---|---|
-| [spotify_mcp.py](spotify_mcp.py) | MCP server. The tools, token refresh, HTTP retries. | `python spotify_mcp.py` (stdio) |
-| [agent.py](agent.py) | LangGraph `create_react_agent`. Launches the server over stdio, reads its tool list, loops model ↔ tools. | `python agent.py "..."` |
-| [ui_check.py](ui_check.py) | Runs the Streamlit app under its own test harness and asserts the mode controls agree. No model calls. | `python ui_check.py` |
-| [bakeoff.py](bakeoff.py) | Scores models on the four cases that matter here: right tool, no forbidden writes, no repeated calls, usable answer. | `python bakeoff.py` |
-| [run_tool.py](run_tool.py) | Manual tool runner. Lists tools, prompts for fields, prints results. | `python run_tool.py` |
-| [streamlit_app.py](streamlit_app.py) | Web UI. Agent mode streams `agent.run()` into a chat; Tools mode generates widgets from each tool's `inputSchema`. | `streamlit run streamlit_app.py` |
-| [.env.example](.env.example) | The five environment variables. | copy to `.env` |
+| [spotify_mcp.py](../../spotify_mcp.py) | MCP server. The tools, token refresh, HTTP retries. | `python spotify_mcp.py` (stdio) |
+| [agent.py](../../agent.py) | LangGraph `create_react_agent`. Launches the server over stdio, reads its tool list, loops model and tools. | `python agent.py "..."` |
+| [test_ui.py](../../tests/test_ui.py) | Runs the Streamlit app under its own test harness and asserts the mode controls agree. No model calls. | `python tests/test_ui.py` |
+| [bakeoff.py](../../benchmarks/bakeoff.py) | Scores models on six representative cases. | `python benchmarks/bakeoff.py` |
+| [run_tool.py](../../run_tool.py) | Manual tool runner. Lists tools, prompts for fields, prints results. | `python run_tool.py` |
+| [streamlit_app.py](../../streamlit_app.py) | Web UI. Agent mode streams the agent; Tools mode generates widgets from each tool's schema. | `python -m streamlit run streamlit_app.py` |
+| [.env.example](../../.env.example) | Environment variable template. | copy to `.env` |
 
 Adding a tool to `spotify_mcp.py` makes it appear in all three clients with no other
 edit. That is the main reason the schemas are read at runtime rather than hardcoded.
@@ -123,7 +124,7 @@ debugging cycle.
 ## Gaps
 
 Ordered by how much they block the abstract. The actionable form of this list,
-with everything else still owed, is [TODO.md](TODO.md).
+with everything else still owed, is the [roadmap](../roadmap.md).
 
 1. **No psych/emotion MCP server.** `get_big_five()` and `get_emotion_labels()` do
    not exist, so no trait or emotion inference happens anywhere. The weekly drift
@@ -182,7 +183,7 @@ with everything else still owed, is [TODO.md](TODO.md).
   "expanded size of the tensor (N)", bert "size of tensor a (N)"), which the parser
   learned the hard way. A limitation remains that no plumbing can fix: go_emotions is
   English-trained, so pure Devanagari scores near "neutral" rather than its actual
-  emotion. Logged in TODO; the fix is a multilingual emotion model or scoring
+  emotion. Now tracked in the [roadmap](../roadmap.md); the fix is a multilingual emotion model or scoring
   translations, not more chunking.
 - **2026-08-18** — A copy button under every finished reply. Streamlit has no
   clipboard call, so it is a small HTML component: clipboard API first, execCommand
@@ -267,10 +268,10 @@ with everything else still owed, is [TODO.md](TODO.md).
 - **2026-08-18** — Uploads: images and PDFs in the chat. `qwen3.5-flash` takes image
   input natively (verified live: a synthetic playlist screenshot transcribed
   character-perfect through the same `_llm()` the agent uses), so no second model and
-  no routing. The design is read-once: `prepare_upload` makes one vision call whose
-  full reading rides the message's `additional_kwargs`; the first turn sends real
-  pixels, and the shrink hook thereafter swaps the image block for the reading, so a
-  screenshot costs its tokens once, not every turn. Verified: turn two answered "what
+  no routing. `prepare_upload` makes a dedicated vision-reading call whose result
+  rides the message's `additional_kwargs`; the first agent turn also receives real
+  pixels, and the shrink hook thereafter swaps the image block for the reading.
+  Verified: turn two answered "what
   did the bottom line say" exactly, with zero image blocks resent. PDFs are pypdf text
   per page, and a page with no text but an embedded image (any phone scan) is
   vision-read instead of silently dropped, which is what `extract_text()` alone does;
@@ -372,12 +373,12 @@ with everything else still owed, is [TODO.md](TODO.md).
   list, the model announced that "Unmaad" was really called "Bhar Do Jholi Meri", which
   is its first track.
 - **2026-08-17** — The whole reachable surface probed and written down in
-  research/API_SURFACE.md, 37 live requests rather than a reading of the documentation. Six
+  [Spotify API survey](../research/spotify/api-surface.md), 37 live requests rather than a reading of the documentation. Six
   more tools from what answered: `liked_songs`, `saved_albums`, `top_artists`,
   `album_tracks`, `artist_albums`, `now_playing`. The probe also found that the
   limit-10 cap is not only on `/search`: `/artists/{id}/albums` shares it, so `_pages`
   takes a page size. Seventeen tools now, which makes the tool-selection item in the
-  TODO more pressing rather than less.
+  roadmap more pressing rather than less.
 - **2026-08-17** — Paging, two new tools, and a third instance of the same rename.
   `playlist_tracks` read the first 50 tracks and silently dropped the rest, so a
   240-track playlist was analysed from a third of itself. One `_pages` helper now
@@ -429,9 +430,9 @@ with everything else still owed, is [TODO.md](TODO.md).
 - **2026-08-16** — Default OpenRouter model is now `qwen/qwen3.5-flash-02-23`,
   chosen by a 14-model bake-off: it ties the previous default `openai/gpt-5.4-mini`
   at 29/30 within one tool call and 28% of the latency, for a tenth of the input
-  price. Full results and method in [MODEL_BAKEOFF.md](MODEL_BAKEOFF.md); the
+  price. Full results and method in the [model bake-off](../benchmarks/model-bakeoff.md); the
   reasoning about running several models at once is in
-  [MULTI_MODEL.md](research/MULTI_MODEL.md). A rubric bug in the first round (demanding
+  [multi-model notes](../design/multi-model.md). A rubric bug in the first round (demanding
   `search_by_feel` for "songs about rain", where the lyric search is a fair read)
   had masked the winner, so the fix came before the choice. The model needs
   `extra_body={"reasoning": {"enabled": False}}` on OpenRouter: it otherwise streams
@@ -456,7 +457,7 @@ with everything else still owed, is [TODO.md](TODO.md).
   Streamlit forbids assigning to a widget's key once that widget has rendered, and
   the chat input is handled after the buttons, so a slash command blew up trying to
   move them. The key now carries the mode (`mode_picker_<mode>`), so changing mode
-  builds a fresh widget that reads the new default. `ui_check.py` covers it.
+  builds a fresh widget that reads the new default. `tests/test_ui.py` covers it.
 - **2026-08-16** — Three approval modes (`manual`, `afk`, `auto`), set by buttons
   above the chat bar or by slash command; both write `session_state.mode`, and the
   command also writes the widget's key so the buttons never show a stale mode. Built on `interrupt_before=["tools"]` plus the
@@ -526,7 +527,7 @@ with everything else still owed, is [TODO.md](TODO.md).
   the search, with the numbers demoted to a single modifier word. Removed the
   `"music"` fallback: mid-range values used to produce an empty query, so the tool
   searched the literal word "music". Default model is `openai/gpt-5.4-mini`.
-  Added [TODO.md](TODO.md).
+  Added the [roadmap](../roadmap.md).
 - **2026-08-15** — Added an Agent mode to the Streamlit app. `agent.collect()` is
   now the shared entry point for the CLI and the UI. The agent's MCP subprocess
   runs correctly from Streamlit's worker thread, which was the open risk.

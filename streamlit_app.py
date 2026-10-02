@@ -46,7 +46,7 @@ def _widget(key: str, spec: dict, required: bool):
     if kind == "integer":
         # the ceiling follows the tool's own default: paging tools default to 200, and a
         # hardcoded 50 here made Streamlit refuse to render them at all
-        top = max(50, default or 0)  # ui_check.py renders every form to keep this honest
+        top = max(50, default or 0)  # tests/test_ui.py renders every form to keep this honest
         return int(st.number_input(label, min_value=1, max_value=top, value=default or 10, step=1))
     if kind == "number":
         if default is not None and 0.0 <= default <= 1.0:

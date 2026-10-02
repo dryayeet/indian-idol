@@ -5,7 +5,7 @@
 
 Needs OPENROUTER_API_KEY in .env, plus the Spotify variables spotify_mcp.py reads.
 Pick the model with OPENROUTER_MODEL; it must support tool calling. Which model and
-why: MODEL_BAKEOFF.md.
+why: docs/benchmarks/model-bakeoff.md.
 
 The agent speaks MCP: it launches spotify_mcp.py as a subprocess over stdio and reads
 the tool list from the server, so tools added there appear here with no change to this
@@ -337,7 +337,7 @@ def _shrink_old_tools(state: dict) -> dict:
 PLAYLIST_TOOLS = {"my_playlists", "playlist_tracks", "create_playlist"}
 MODES = {
     "manual": "every tool call waits for you",
-    "afk": "reads run freely, playlist tools wait for you",
+    "afk": "most reads run freely; playlist list, track reads, and writes wait",
     "auto": "everything runs, nothing waits",
 }
 
@@ -618,7 +618,7 @@ async def _selfcheck() -> None:
     assert len(str(sent[4].content)) == 3000, "current turn's result must survive"
     assert "summary" in str(sent[2].content), "the reply that summarised it must stay"
     key = "key present" if os.environ.get(KEY_VAR) else f"NO {KEY_VAR}"
-    print(f"ok — {len(names)} tools over MCP stdio, model {MODEL}, {key}")
+    print(f"ok - {len(names)} tools over MCP stdio, model {MODEL}, {key}")
 
 
 if __name__ == "__main__":

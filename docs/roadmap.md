@@ -1,7 +1,7 @@
-# To do
+# Roadmap
 
-Living list. Updated 2026-08-18. Newest decisions go in
-[ARCHITECTURE.md](ARCHITECTURE.md); this file is what is still owed.
+Living list. Updated 2026-09-21. Current decisions go in
+[architecture.md](architecture.md); this file records what is still owed.
 
 Ordered by what blocks the most. Check items off, do not delete them, so the
 Done section records what was actually finished.
@@ -20,7 +20,8 @@ Done section records what was actually finished.
   needs a store that outlives every thread and restart, or "next week's reading
   measures last week's action" cannot happen. Now the only missing piece of the
   abstract's workflow 2: the producers exist, the readings just have nowhere to
-  live. Upgrade path: swap `InMemorySaver` for a SQLite checkpointer
+  live. This is one of the remaining pieces alongside an explicit feedback signal.
+  Upgrade path: swap `InMemorySaver` for a SQLite checkpointer
   (`langgraph-checkpoint-sqlite` + `aiosqlite`), then a separate store for the
   weekly trait readings.
 - [ ] **Add a feedback signal.** Nothing measures whether a playlist moved
@@ -30,10 +31,10 @@ Done section records what was actually finished.
   the psych server exists to write into it. To design: what a profile holds, who
   writes it, and what reads it back. Overlaps the mental-map item below; they are
   probably one feature.
-- [ ] **Ranking logic for song fetching: personalise it properly.** Results are
-  whatever Spotify's text search returns, in its order, with no reference to the
-  user at all. Their own history (`top_tracks`, `recently_played`) is already
-  available and unused for ranking.
+- [ ] **Ranking logic for song fetching: personalise it properly.** ReccoBeats
+  ranks candidates by requested audio features when those controls move off their
+  defaults, but ranking still does not use the listener's own history. Their
+  `top_tracks` and `recently_played` data is available and unused for ranking.
 - [ ] **Spotify auth for other users.** Today one refresh token means one account,
   which is also the reason the deployed app cannot be shared. Real per-user auth
   means an OAuth callback, per-user token storage, and a server that is no longer
@@ -48,7 +49,7 @@ Done section records what was actually finished.
   `DELETE` removes, `PUT /playlists/{id}` renames. The agent can build a playlist but
   cannot revise one, so "drop the last three" and "put the slow ones at the end" are
   both impossible. The most-requested thing every other Spotify MCP server has and
-  this one does not. See research/API_SURFACE.md.
+  this one does not. See the [Spotify API survey](research/spotify/api-surface.md).
 - [ ] **A mental map of the user, built once at the start of a chat.** The playlist
   names now go into the prompt and that alone removed ten wasted calls, which suggests
   the same move goes further: read the full picture once at startup, top artists and
@@ -61,7 +62,7 @@ Done section records what was actually finished.
   rather than by hand. When it refreshes, because taste moves slowly but a new playlist
   does not. And whether a summary written once can mislead a later turn, which is the
   known risk with any cached profile: `now_playing` and `recently_played` are live and
-  should always win over the map. Related: [MULTI_MODEL.md](research/MULTI_MODEL.md) on using a
+  should always win over the map. Related: [multi-model notes](design/multi-model.md) on using a
   second cheap model for a narrow job, and the psych profile in the abstract.
 - [ ] **Hindi lyrics score as "neutral" emotion.** The length bug is fixed, but
   go_emotions is trained on English Reddit: pure Devanagari comes back neutral 0.84
@@ -164,19 +165,17 @@ Done section records what was actually finished.
   writing silently, because a preference written from a misread instruction is worse
   than none. Sits above the mental-map item, which stores what the user *listens to*;
   this stores how they want to be worked with.
-- [ ] **Select the tools, rather than sending all of them every call.** All eleven
-  schemas go into every request, and the number only grows: the psych server and
-  per-user auth both add more. Retrieve the few that fit the request instead, either
+- [ ] **Select the tools, rather than sending all of them every call.** All 24
+  schemas go into every request. Retrieve the few that fit the request instead, either
   by embedding the request against the tool descriptions or by a cheap first pass that
   picks a subset. Two things to settle before building it: whether the token saving is
   worth anything here, given a full bake-off costs $0.24, and whether a wrong subset
   costs more than it saves, since a tool that is not in context cannot be called at
-  all. Measure the current schema cost first; the last count was 1,242 tokens for
-  nine tools.
+  all. Measure the current schema cost before choosing an approach.
 - [ ] **Score the reply, not just the tool calls.** The bake-off gave the new
   default 29/30 while it was streaming "The user is asking for..." and stray
   `</think>` tags to the user. Add a check for first-person deliberation and
-  thinking tags in the reply. See MODEL_BAKEOFF.md.
+  thinking tags in the reply. See the [model bake-off](benchmarks/model-bakeoff.md).
 - [ ] **Measure model consistency, not just one run.** The bake-off runs each case
   once, so a model that succeeds four times in five looks identical to one that
   always succeeds. Repeat each case k times and score the worst run.
@@ -192,12 +191,12 @@ Done section records what was actually finished.
 - [ ] **Embeddings for lyric ranking.** The highest-value multi-model move, and it
   is not an LLM: `_lyric_score` counts shared words, so "headlights" never matches
   "high beams". Lyrics never change, so embeddings are computed once and cached.
-  See [MULTI_MODEL.md](research/MULTI_MODEL.md).
+  See the [multi-model notes](design/multi-model.md).
 - [ ] **A relevance judge over search results.** `_relevant()` is a four-character
   substring check; it kills gibberish but cannot tell that three "Rainy Days"
   tracks match the words and miss the request. A cheap second model scoring each
   candidate, with no access to the conversation, is the verifier pattern. See
-  [MULTI_MODEL.md](research/MULTI_MODEL.md).
+  [multi-model notes](design/multi-model.md).
 - [ ] **Failover on 402 and 429.** Everything runs through one OpenRouter key, so a
   dead key or an empty balance stops the agent. Falling back to another model or a
   second key would have rescued two dead sessions already.
@@ -212,7 +211,7 @@ Done section records what was actually finished.
   noise, so a bad description is presented as a real answer.
 - [X] **2026-08-16** — Retry on Spotify 429. `_call` now waits the `Retry-After` and
   retries three times, failing fast if the wait is longer than 30s.
-- [ ] **Test beyond the selfchecks.** `ui_check.py` now covers the mode controls
+- [ ] **Test beyond the selfchecks.** `tests/test_ui.py` now covers the mode controls
   end to end, but the HTTP paths are still untested against recorded responses,
   so an endpoint moving under us is only found by running the thing.
 - [ ] **Give the CLI a memory, or say plainly that it has none.** The chat trims
@@ -235,7 +234,7 @@ Done section records what was actually finished.
   for a warning that changes nothing today.
 - [ ] **Revisit the `mcp<2.0.0` pin** when `langchain-mcp-adapters` supports 2.0.
   Going back means `MCPServer`, `Tool.input_schema`, and a `.content` object
-  instead of a tuple. See Environment constraints in ARCHITECTURE.md.
+  instead of a tuple. See External Constraints in [architecture.md](architecture.md).
 - [ ] **Lock down the deployed Streamlit app.** It runs on one Spotify account
   with no per-user login, so anyone with the URL controls that account and
   spends the provider key. Restrict to named viewers, or add a shared password
@@ -243,7 +242,12 @@ Done section records what was actually finished.
   and reads leak the account's history in every mode.
 - [ ] **Reword the abstract's workflow 2.** It claims `target_valence` and
   `target_acousticness`, which no new Spotify app can use. What is built is
-  keyword search over a model-written description, plus lyric reranking.
+  keyword search over a model-written description, optional ReccoBeats feature
+  ranking, and a separate lyric fetch-and-rerank path.
+- [x] **2026-09-21 - Expand the Jev tool-selection comparison to about 40 cases.**
+  The pilot covered only the original bake-off's six cases. The completed follow-up
+  covers 41 cases across the tool inventory, including playlist-name traps, chitchat,
+  and ambiguity. See [Jev tool selection](benchmarks/jev-tool-selection.md).
 
 ## Done
 
@@ -251,8 +255,10 @@ Done section records what was actually finished.
   found on the way: the model ships no label names (order taken from its card), and
   the default softmax silently forced five independent traits to sum to 1 (fixed with
   function_to_apply sigmoid).
-- [X] **2026-08-18** — Same-day work outside this list, recorded in ARCHITECTURE:
-  uploads (images and PDFs, read-once then stubbed), a Stop button, three brakes on
+- [X] **2026-08-18** — Same-day work outside this list, recorded in the
+  [development log](history/development-log.md):
+  uploads (images receive a vision reading and first-turn pixels, then are stubbed),
+  a Stop button, three brakes on
   tool loops (bounded retries, final web_search errors, per-tool budget),
   track_features, and the prompt deduplicated against the tool docstrings, 1,157
   tokens to 885.
@@ -288,7 +294,7 @@ Done section records what was actually finished.
   Four-way tie on score, so the default model was left alone; `gpt-5.4-mini` won
   both tiebreakers anyway (6 calls, 46.6s).
 - [X] **2026-08-16** — Approval modes (`manual`, `afk`, `auto`) with slash
-  commands and buttons that stay in step, plus `ui_check.py` to prove it.
+  commands and buttons that stay in step, plus `tests/test_ui.py` to prove it.
 - [X] **2026-08-16** — One MCP session per run: tool calls went from 3.6-4.0s
   each to 0.30-0.41s. Replies stream token by token.
 - [X] **2026-08-16** — Gemini added as a second provider; provider now

@@ -1,9 +1,16 @@
-# Autonomous Spotify Agent
+# Autonomous Spotify Agent: Original Project Proposal
 
 **An affect-aware agent that infers psychological state from listening behaviour and acts on it.**
 
 Prajwal Pandey · June 2026 – July 2026
 LangGraph · Model Context Protocol (FastMCP) · Hugging Face Inference API · Spotify
+
+> **Status:** This is the original project proposal, preserved to explain the
+> motivation and intended closed loop. It is not a description of the current
+> implementation. The current system uses OpenRouter for conversation, ReccoBeats
+> for partial audio features, `Minej/bert-base-personality` for Big Five inference,
+> and has no durable weekly profile or outcome-feedback loop. See
+> [Architecture](architecture.md) for what is implemented.
 
 ---
 
@@ -185,6 +192,5 @@ Stated plainly, since they bound what the system can claim:
 
 ---
 
-*Note on claims: this document describes implemented design. It reports no accuracy,
-performance, or user-study results, because none were measured. Trait and emotion outputs are
-model estimates and are described as such throughout.*
+*Note on claims: this document records the intended design. Trait and emotion outputs
+are model estimates, and the proposed closed-loop intervention has not been validated.*

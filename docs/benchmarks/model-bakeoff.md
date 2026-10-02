@@ -1,7 +1,8 @@
-# Model bake-off
+# Model Bake-Off
 
 What model this agent should run on, decided by measurement rather than by
-leaderboard. Last run 2026-08-16 with [bakeoff.py](bakeoff.py).
+leaderboard. Last run 2026-08-16 with
+[`benchmarks/bakeoff.py`](../../benchmarks/bakeoff.py).
 
 **Current default: `qwen/qwen3.5-flash-02-23`.** It ties the previous default on
 score at a tenth of the input price.
@@ -75,7 +76,7 @@ Round one (2026-08-16, before the rubric fix below) also tested
 
 ## Why `qwen3.5-flash-02-23` over the other models that tied
 
-Five models tied at 29/30, so the choice came from the other columns.
+Six models tied at 29/30, so the choice came from the other columns.
 
 - `qwen3.7-flash` is cheaper still, but 141s against 106s. A third more waiting
   for the same answer.
@@ -83,8 +84,9 @@ Five models tied at 29/30, so the choice came from the other columns.
 - `gpt-5.4-nano` is the fastest at 75s, but saves the least: $0.20/$1.25.
 - `gemini-3.7-flash` needed 40 calls to reach the same score.
 
-`qwen3.5-flash-02-23` is within one call and 28% of the latency of the previous
-default, for a tenth of the input price and a seventeenth of the output price.
+With reasoning disabled, `qwen3.5-flash-02-23` is two calls more efficient and
+about 2% slower than the previous default, for a tenth of the input price and a
+seventeenth of the output price.
 
 ## The one thing the rubric missed: reasoning leaking into the answer
 
@@ -152,11 +154,16 @@ score, and only the case-level tool assertions catch it.
 
 ## Re-running it
 
-```
-python bakeoff.py --selfcheck                 scoring logic, no API calls
-python bakeoff.py                             the default panel
-python bakeoff.py openai/gpt-5.4-mini ...     named models
+```powershell
+# Scoring logic, no API calls
+python benchmarks/bakeoff.py --selfcheck
+
+# Default panel
+python benchmarks/bakeoff.py
+
+# Named models
+python benchmarks/bakeoff.py openai/gpt-5.4-mini qwen/qwen3.5-flash-02-23
 ```
 
 Use `python -u` so scores stream instead of appearing at the end. Results land in
-`bakeoff_results.json`.
+the ignored `artifacts/benchmarks/bakeoff_results.json` file.
