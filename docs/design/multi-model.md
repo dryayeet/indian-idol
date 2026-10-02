@@ -92,7 +92,8 @@ inside a small context. Coordination would buy nothing and cost reliability.
 
 Worth noticing that this project is multi-model in the right way already:
 
-- The psych server is two specialist Hugging Face models, not two chat models arguing.
+- The psych server uses two narrow Hugging Face classifiers: GoEmotions and a hosted
+  zero-shot model constrained to paired Big Five labels, not chat models arguing.
 - `search_by_lyrics` reranks locally instead of asking an LLM to rank.
 - `_relevant` and `_feel_query` are plain code where plain code suffices.
 

@@ -3,6 +3,10 @@
 Architecture snapshot from 2026-08-17 followed by a development log through
 2026-08-19. For the current system, see [Architecture](../architecture.md).
 
+Current note: Hugging Face retired the Minej Big Five endpoint described below.
+It was replaced on 2026-10-03 with paired-label zero-shot inference; the historical
+decision record remains unchanged.
+
 For the project's intent and psychological framing, read
 [original project proposal](../project-abstract.md). This file records what was
 actually built, why it is built that way, and what the environment forces.

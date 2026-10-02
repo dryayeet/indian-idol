@@ -8,8 +8,9 @@ LangGraph · Model Context Protocol (FastMCP) · Hugging Face Inference API · S
 > **Status:** This is the original project proposal, preserved to explain the
 > motivation and intended closed loop. It is not a description of the current
 > implementation. The current system uses OpenRouter for conversation, ReccoBeats
-> for partial audio features, `Minej/bert-base-personality` for Big Five inference,
-> and has no durable weekly profile or outcome-feedback loop. See
+> for partial audio features, and `facebook/bart-large-mnli` with paired OCEAN labels
+> for heuristic Big Five signals. It has no durable weekly profile or outcome-feedback
+> loop. See
 > [Architecture](architecture.md) for what is implemented.
 
 ---

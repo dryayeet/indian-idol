@@ -72,7 +72,7 @@ the Spotify dashboard. Spotify rejects `localhost` for this flow.
 | `SPOTIFY_REFRESH_TOKEN` | Yes | Long-lived Spotify account authorization. |
 | `OPENROUTER_API_KEY` | Agent mode | Conversational model and live benchmarks. |
 | `OPENROUTER_MODEL` | No | Tool-capable OpenRouter model override. |
-| `HF_TOKEN` | Psych tools | Big Five and emotion inference. |
+| `HF_TOKEN` | Psych tools | Big Five and emotion inference; needs Inference Providers permission. |
 | `LASTFM_API_KEY` | No | Similar artists and track-level genre tags. |
 
 The default model and selection rationale are documented in the
@@ -163,12 +163,16 @@ available commands. `create_playlist` is the only Spotify write tool.
 
 | Tool | Purpose |
 |---|---|
-| `get_big_five` | Estimate five OCEAN trait scores from text. |
+| `get_big_five` | Estimate five heuristic OCEAN trait signals from text. |
 | `get_emotion_labels` | Estimate probabilities over 28 emotion labels. |
 
-Psychological outputs are model estimates, not diagnoses. The Big Five endpoint
-returned HTTP 410 during the latest recorded benchmark and should be revalidated
-before relying on it.
+Psychological outputs are model estimates, not diagnoses. Big Five uses the hosted
+`facebook/bart-large-mnli` zero-shot classifier with paired high/low labels for each
+trait. The resulting values are heuristic evidence, not calibrated psychometric
+scores, and values from the retired Minej model are not longitudinally comparable.
+Long inputs use up to 12 evenly distributed safe-size samples and report scored versus
+total characters instead of silently truncating text. Sample results are weighted by
+their character coverage.
 
 ## Uploads
 
@@ -246,6 +250,7 @@ contain workstation paths or HTTP traces. Curated findings belong in `docs/bench
 ```powershell
 python spotify_mcp.py --selfcheck
 python psych_mcp.py --selfcheck
+python -m unittest -v tests.test_psych
 python run_tool.py --selfcheck
 python agent.py --selfcheck
 python benchmarks/bakeoff.py --selfcheck
@@ -269,6 +274,7 @@ harness and makes no model calls.
 - Spotify-owned playlists and other users' playlists are not readable with this app's credentials.
 - Last.fm coverage is uneven outside Western catalogues; MusicBrainz fallback is slower.
 - DuckDuckGo can rate-limit bursts of web searches.
+- Big Five values are zero-shot trait signals rather than validated psychometric scores.
 - Durable weekly profiles and intervention feedback from the original proposal are not implemented.
 - `mcp` must remain below 2.0 until `langchain-mcp-adapters` supports it.
 

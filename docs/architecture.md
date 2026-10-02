@@ -29,9 +29,9 @@ sessions open for one turn. The servers are stateless. Streamlit stores conversa
 state in an `InMemorySaver`, so state survives Streamlit reruns but not a process
 restart. A standalone CLI invocation starts without prior memory.
 
-Streamlit's Tools mode and `run_tool.py` call the FastMCP applications in-process
-instead of using the stdio transport. Image and PDF uploads also bypass MCP: they are
-converted into model context by `agent.py`.
+Streamlit's Tools mode calls both FastMCP applications in-process; `run_tool.py` does
+the same for Spotify tools only. Image and PDF uploads bypass MCP and are converted
+into model context by `agent.py`.
 
 ## Components
 
@@ -39,7 +39,7 @@ converted into model context by `agent.py`.
 |---|---|
 | [`agent.py`](../agent.py) | Model client, MCP sessions, prompt, approval modes, uploads, streaming, and loop brakes. |
 | [`spotify_mcp.py`](../spotify_mcp.py) | Spotify authentication and 22 music, library, search, analysis, and playlist tools. |
-| [`psych_mcp.py`](../psych_mcp.py) | Big Five and emotion classifiers exposed as two MCP tools. |
+| [`psych_mcp.py`](../psych_mcp.py) | Paired-label zero-shot Big Five signals and GoEmotions classification exposed as two MCP tools. |
 | [`streamlit_app.py`](../streamlit_app.py) | Agent chat and schema-generated tool forms. |
 | [`run_tool.py`](../run_tool.py) | Interactive and one-shot Spotify tool runner. |
 | [`get_token.py`](../get_token.py) | Local Spotify OAuth callback and refresh-token setup. |
@@ -75,7 +75,8 @@ Spotify account, so it must not be exposed publicly.
 - No durable weekly trait trajectory exists.
 - No feedback signal measures whether generated playlists change later listening.
 - Psychological model outputs are estimates, not clinical or diagnostic measurements.
-- The Big Five endpoint returned HTTP 410 during the latest recorded Jev benchmark and needs revalidation.
+- Current Big Five values are not comparable with values from the retired Minej model.
+- Long Big Five inputs are sampled across the text with explicit character coverage.
 
 See the [roadmap](roadmap.md) for planned work and the
 [development log](history/development-log.md) for historical decisions.

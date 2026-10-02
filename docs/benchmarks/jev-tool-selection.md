@@ -107,8 +107,9 @@ tier by itself.
 - In-loop runs hit live Spotify and DuckDuckGo, so their timings carry network
   noise the other arms do not.
 - The Hugging Face Big Five endpoint returned 410 Gone during both in-loop runs;
-  the cases still scored because the tool call itself was correct. Worth a look
-  separately: `psych_mcp.py`'s model may need a replacement.
+  the cases still scored because the tool call itself was correct. Resolved
+  2026-10-03 by replacing the retired model with hosted paired-label zero-shot
+  inference. This note preserves the conditions of the recorded benchmark.
 
 ## Re-running it
 

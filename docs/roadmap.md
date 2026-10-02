@@ -1,20 +1,31 @@
 # Roadmap
 
-Living list. Updated 2026-09-21. Current decisions go in
+Living list. Updated 2026-10-03. Current decisions go in
 [architecture.md](architecture.md); this file records what is still owed.
 
 Ordered by what blocks the most. Check items off, do not delete them, so the
 Done section records what was actually finished.
 
+## Immediate priorities
+
+- [ ] **Per-user Spotify auth with isolated library context.** Flow: viewer enters display name, connects Spotify via Authorization Code flow with state, agent uses that user's token for all Spotify calls and prompt playlist names. Store: `data/users.db` SQLite (gitignored) keyed by Spotify user ID with encrypted refresh tokens, scopes, and metadata; Streamlit `session_state` holds only display name and user ID, never tokens. Requires per-request token lookup, MCP user-context propagation, logout and revoke, 6-month re-auth, and mocked auth tests. Name alone is not identity.
+- [ ] **Add a session-only name entry screen.** Ask what to call the viewer before
+  rendering the main Streamlit UI, retain the trimmed name only in session state, and
+  clear the conversation and pending approvals when it changes. This is a welcome
+  screen, not authentication, and it does not change which Spotify account is used.
+- [ ] **Add agent playback controls: resume, pause, next, and previous.** Expose four
+  Spotify MCP tools using the active device, require `user-modify-playback-state`,
+  Spotify Premium, and a newly minted refresh token, and gate all four in AFK mode.
+  CI must mock these write endpoints rather than controlling a real player.
+
 ## Blocking the abstract
 
 - [ ] **Validate trait movement over real weeks, not synthetic texts.** The psych
-  tools are live-tested: emotions discriminate sharply (sadness 0.898 on a sad text,
-  joy 0.855 on a euphoric one) and the agent chains
+  tools are live-tested and the agent chains
   listening_lyrics → get_emotion_labels → get_big_five three runs out of three. What
-  is not yet shown is Big Five moving between a sad week and a loud one on real
-  listening: traits barely move on short text by design, so this needs the durable
-  store below to compare across weeks.
+  is not yet shown is Big Five moving between weeks on real listening. The current
+  paired zero-shot signals are not comparable with historical Minej model values, so
+  a new baseline and the durable store below are required before tracking movement.
 - [ ] **Give the agent durable memory.** Conversation memory exists but is
   in-process only, so it dies with the Streamlit process. The trait trajectory
   needs a store that outlives every thread and restart, or "next week's reading
@@ -106,9 +117,6 @@ Done section records what was actually finished.
   and hold all four.
 - [ ] **Deduplicate and merge playlists.** Pure local logic over data already
   reachable, no new endpoint. `_dedupe` already exists.
-- [ ] **Playback control**, if the agent should act on a mood rather than only
-  describe it. Needs `user-modify-playback-state`, Spotify Premium, and a live device,
-  so it cannot be covered by a check that runs anywhere.
 - [ ] **Say when a request cannot be met, rather than substituting.** Asked to look at
   "Your Top Songs 2024", the agent quietly called `top_tracks` and analysed that
   instead, without saying the playlist was unreachable. The answer was useful and the
@@ -251,6 +259,12 @@ Done section records what was actually finished.
 
 ## Done
 
+- [X] **2026-10-03 - Restore and test Big Five inference.** Hugging Face stopped
+  serving `Minej/bert-base-personality`, so `get_big_five` now uses the hosted
+  `facebook/bart-large-mnli` zero-shot model with paired high/low OCEAN labels.
+  Unit tests enforce the five-key `[0, 1]` contract, required labels, valid values,
+  request parameters, coverage-weighted sample aggregation, and explicit long-text
+  coverage. These are heuristic trait signals, not psychometric scores.
 - [X] **2026-08-18** — Psych tools live-tested with a real HF token. Two API bugs
   found on the way: the model ships no label names (order taken from its card), and
   the default softmax silently forced five independent traits to sum to 1 (fixed with
