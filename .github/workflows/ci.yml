@@ -1,0 +1,36 @@
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Compile Python sources
+        run: python -m compileall -q agent.py spotify_mcp.py psych_mcp.py streamlit_app.py run_tool.py get_token.py benchmarks tests
+
+      - name: Run benchmark self-checks
+        run: |
+          python benchmarks/bakeoff.py --selfcheck
+          python benchmarks/bakeoff_jev.py --selfcheck
+          python benchmarks/bakeoff_jev_40.py --selfcheck
+
+      - name: Run Streamlit check
+        run: python tests/test_ui.py
