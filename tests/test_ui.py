@@ -1,16 +1,21 @@
 """Drive the Streamlit app headlessly and check the mode controls agree.
 
-    python ui_check.py
+    python tests/test_ui.py
 
 Streamlit's own test harness runs the real script, so this catches the widget-state
 rules that only bite at runtime. It calls no model and spends no credits.
 """
 
+from pathlib import Path
+
 from streamlit.testing.v1 import AppTest
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
 def main() -> None:
-    app = AppTest.from_file("streamlit_app.py", default_timeout=180)
+    app = AppTest.from_file(str(ROOT / "streamlit_app.py"), default_timeout=180)
     app.run()
     picker = lambda: app.get("button_group")[0]  # noqa: E731 - re-read after each run
     assert app.session_state.mode == "afk", app.session_state.mode
@@ -36,7 +41,7 @@ def main() -> None:
     assert app.session_state.mode == "afk", "a bad command changed the mode"
 
     _forms(app)
-    print("ok — buttons and slash commands stay in step, every tool form renders")
+    print("ok - buttons and slash commands stay in step, every tool form renders")
 
 
 def _forms(app) -> None:

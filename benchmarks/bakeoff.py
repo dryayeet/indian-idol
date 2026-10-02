@@ -1,8 +1,8 @@
 """Score models on this agent's actual job, not on a generic benchmark.
 
-    python bakeoff.py                          the default panel on OpenRouter
-    python bakeoff.py openai/gpt-5.4-mini ...  named models
-    python bakeoff.py --selfcheck              scoring logic only, no API calls
+    python benchmarks/bakeoff.py                          the default panel on OpenRouter
+    python benchmarks/bakeoff.py openai/gpt-5.4-mini ...  named models
+    python benchmarks/bakeoff.py --selfcheck              scoring logic only, no API calls
 
 Correctness is 5 points a case, scored mechanically so it is reproducible. Three
 things are measured alongside it, because a model that answers correctly while
@@ -13,7 +13,7 @@ burning ten tool calls is not the better model:
     efficiency  the fewest calls the case needs, over the calls actually made
 
 Costs real money. The default panel is roughly $0.30. Results land in
-bakeoff_results.json.
+artifacts/benchmarks/bakeoff_results.json.
 """
 
 import asyncio
@@ -24,6 +24,13 @@ import time
 
 import httpx
 from langgraph.checkpoint.memory import InMemorySaver
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+ARTIFACTS = os.path.join(ROOT, "artifacts", "benchmarks")
+RESULTS = os.path.join(ARTIFACTS, "bakeoff_results.json")
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 
 import agent
 
@@ -257,9 +264,10 @@ async def main(models: list[str]) -> None:
             f"{sum(r['seconds'] for r in rows):>7.0f}{data['cost']:>9.4f}"
         )
 
-    with open("bakeoff_results.json", "w", encoding="utf-8") as f:
+    os.makedirs(ARTIFACTS, exist_ok=True)
+    with open(RESULTS, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
-    print("\nfull detail in bakeoff_results.json")
+    print(f"\nfull detail in {RESULTS}")
 
 
 if __name__ == "__main__":
