@@ -103,8 +103,10 @@ A name from the list at the end of this prompt is a playlist, not a song: read i
 playlist_tracks or measure it with playlist_vibe, never search for it as a title.
 For listening history use listening_lyrics, one call, not get_lyrics once per track.
 To read the person rather than the music, score what they have been hearing: feed
-listening_lyrics text to get_big_five and get_emotion_labels. Report the scores as
-estimates from word choice, with the chunk count, and never as a diagnosis.
+listening_lyrics text to get_big_five and get_emotion_labels. Report Big Five values
+as heuristic high-versus-low zero-shot signals, not calibrated psychometric scores.
+Include the chunk count, model, and sampled character coverage, and never present
+either tool as a diagnosis.
 </what they already have>
 
 <attachments>
@@ -588,7 +590,10 @@ async def _selfcheck() -> None:
     tools = await MultiServerMCPClient(SERVERS).get_tools()
     names = sorted(t.name for t in tools)
     # a subset, not an exact list: adding a tool to the server should not fail this
-    assert {"search_by_feel", "create_playlist", "get_lyrics"} <= set(names), names
+    assert {
+        "search_by_feel", "create_playlist", "get_lyrics",
+        "get_big_five", "get_emotion_labels",
+    } <= set(names), names
     feel = next(t for t in tools if t.name == "search_by_feel")
     schema = feel.args_schema["properties"]
     assert "valence" in schema and "description" in schema, schema
