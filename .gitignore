@@ -1,9 +1,28 @@
+# Secrets and local configuration
 .env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+.claude/
+
+# Python
 __pycache__/
 *.py[cod]
 .venv/
 venv/
-graphify-out/
-.pytest_cache/
 spot/
-bakeoff_results.json
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Generated and local artifacts
+artifacts/
+*.log
+graphify-out/
+
+# Operating systems and editors
+.DS_Store
+Thumbs.db
+*.swp
