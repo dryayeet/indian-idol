@@ -19,6 +19,7 @@ htmlcov/
 
 # Generated and local artifacts
 artifacts/
+data/
 *.log
 graphify-out/
 
