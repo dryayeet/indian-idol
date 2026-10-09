@@ -354,18 +354,32 @@ def needs_approval(mode: str, tool: str) -> bool:
 
 
 @asynccontextmanager
-async def build(checkpointer=None, model: str | None = None, gated: bool = False):
+async def build(
+    checkpointer=None,
+    model: str | None = None,
+    gated: bool = False,
+    spotify_refresh_token: str | None = None,
+):
     """Compile the agent over ONE MCP session, held open for the whole turn.
 
     Without the session, every tool call opens its own stdio connection: a new
     interpreter, re-imports, a fresh handshake, about 3.3s of overhead on work that
     takes 0.4s. Inside the session, tool calls cost what the work costs.
+
+    spotify_refresh_token selects whose Spotify account the session reads and
+    writes: the spawned server reads SPOTIFY_REFRESH_TOKEN at call time, so a
+    full env here is the per-user switch. None keeps the .env account.
     """
     if gated and checkpointer is None:
         # a paused graph lives in the checkpointer; without one there is nowhere to
         # park, and the approval could never be resumed
         raise ValueError("approval modes need a checkpointer to hold the paused turn")
-    client = MultiServerMCPClient(SERVERS)
+    servers = SERVERS
+    if spotify_refresh_token:
+        env = dict(os.environ)
+        env["SPOTIFY_REFRESH_TOKEN"] = spotify_refresh_token
+        servers = {**SERVERS, "spotify": {**SERVERS["spotify"], "env": env}}
+    client = MultiServerMCPClient(servers)
     async with client.session("spotify") as session, client.session("psych") as psych:
         tools = await load_mcp_tools(session) + await load_mcp_tools(psych)
         yield create_react_agent(
@@ -442,6 +456,10 @@ async def _drive(graph, config, start, on_part, mode: str, gated: bool) -> list[
                 last = payload["messages"][-1]
                 if last.id in shown:
                     continue
+                if isinstance(last, ToolMessage) and "Spotify disconnected" in str(last.content):
+                    shown.add(last.id)
+                    on_part("auth_error", str(last.content))
+                    return []  # no further tools under a revoked account
                 if calls := [p for p in _parts(last) if p[0] == "tool"]:
                     shown.add(last.id)
                     for part in calls:  # replies come from the token stream instead
@@ -505,13 +523,14 @@ async def run(
     checkpointer=None,
     thread_id: str | None = None,
     model: str | None = None,
+    spotify_refresh_token: str | None = None,
 ):
     """One turn with nothing gated: the CLI and collect() path.
 
     With a checkpointer and a thread_id, earlier turns on that thread are in scope,
     so follow-ups like "make that a playlist" resolve.
     """
-    async with build(checkpointer, model) as graph:
+    async with build(checkpointer, model, spotify_refresh_token=spotify_refresh_token) as graph:
         await _drive(
             graph,
             _config(checkpointer, thread_id),
@@ -527,7 +546,9 @@ async def turn(
 ):
     """One user message, with any uploads. Returns the tool calls waiting, if any."""
     gated = mode != "auto"
-    async with build(checkpointer, kw.get("model"), gated) as g:
+    async with build(
+        checkpointer, kw.get("model"), gated, kw.get("spotify_refresh_token")
+    ) as g:
         config = _config(checkpointer, thread_id)
         start = {"messages": [_user_message(question, attachments)]}
         return await _drive(g, config, start, on_part, mode, gated)
@@ -536,7 +557,9 @@ async def turn(
 async def decide(approve: bool, on_part, *, checkpointer, thread_id, mode="afk", **kw):
     """Answer a pending approval, then carry the turn on. Returns the next wait."""
     gated = mode != "auto"
-    async with build(checkpointer, kw.get("model"), gated) as g:
+    async with build(
+        checkpointer, kw.get("model"), gated, kw.get("spotify_refresh_token")
+    ) as g:
         config = _config(checkpointer, thread_id)
         if not approve:
             # answer each call with a refusal so the model can react instead of hanging

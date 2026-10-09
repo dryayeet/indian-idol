@@ -17,6 +17,8 @@ import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 import httpx
 from dotenv import load_dotenv
@@ -26,19 +28,62 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 API = "https://api.spotify.com/v1"
 app = FastMCP("spotify")
-_tok = {"value": None, "expires": 0.0}
 # retries=3 because accounts.spotify.com intermittently drops the TLS handshake here
 _http = httpx.Client(timeout=30, transport=httpx.HTTPTransport(retries=3))
 
 
-def _token() -> str:
-    if _tok["value"] and time.time() < _tok["expires"] - 60:
-        return _tok["value"]
+class SpotifyAuthError(RuntimeError):
+    """The refresh token was refused, so the account has to reconnect."""
+
+    # the marker the UI greps for in tool output, since an MCP tool failure
+    # reaches the UI as text, never as an exception type
+    MARKER = "Spotify disconnected"
+
+
+# ContextVars follow an in-process tool call into its asyncio task. A process
+# global here could silently run one viewer's tool under another viewer's token.
+_active_refresh: ContextVar[str | None] = ContextVar("spotify_refresh", default=None)
+# access tokens per refresh token, so two profiles in one process never
+# share a cache entry (and a switched user never reuses the other's token)
+_toks: dict[str, dict] = {}
+
+
+def set_active_refresh_token(token: str | None = None) -> None:
+    """Set the token for this execution context; CLI callers use the env fallback."""
+    _active_refresh.set(token)
+
+
+@contextmanager
+def use_refresh_token(token: str):
+    """Bind one in-process tool invocation to this account, then restore it."""
+    if not token:
+        raise ValueError("a connected Spotify account is required")
+    binding = _active_refresh.set(token)
     try:
-        cid, secret, refresh = (
+        yield
+    finally:
+        _active_refresh.reset(binding)
+
+
+def _refresh_token() -> str:
+    if selected := _active_refresh.get():
+        return selected
+    return os.environ.get("SPOTIFY_REFRESH_TOKEN", "")
+
+
+def _token() -> str:
+    refresh = _refresh_token()
+    if not refresh:
+        raise RuntimeError(
+            "no Spotify refresh token: run get_token.py, or connect an account in the UI"
+        )
+    hit = _toks.get(refresh)
+    if hit and time.time() < hit["expires"] - 60:
+        return hit["value"]
+    try:
+        cid, secret = (
             os.environ["SPOTIFY_CLIENT_ID"],
             os.environ["SPOTIFY_CLIENT_SECRET"],
-            os.environ["SPOTIFY_REFRESH_TOKEN"],
         )
     except KeyError as e:
         raise RuntimeError(f"missing env var {e.args[0]}") from None
@@ -48,14 +93,21 @@ def _token() -> str:
         auth=(cid, secret),
         timeout=20,
     )
+    if r.status_code in (400, 401, 403):
+        # 400 invalid_grant is a revoked or expired grant: not a config bug
+        # that a retry fixes, but a "this account must reconnect" state
+        raise SpotifyAuthError(
+            f"{SpotifyAuthError.MARKER}: the refresh was refused "
+            f"({r.status_code}): {r.text[:200]}. Reconnect this account."
+        )
     if r.status_code != 200:
         raise RuntimeError(
             f"token refresh failed ({r.status_code}): {r.text[:200]}. "
             "Check SPOTIFY_CLIENT_ID / SECRET / REFRESH_TOKEN are set correctly."
         )
     d = r.json()
-    _tok.update(value=d["access_token"], expires=time.time() + d["expires_in"])
-    return _tok["value"]
+    _toks[refresh] = {"value": d["access_token"], "expires": time.time() + d["expires_in"]}
+    return d["access_token"]
 
 
 RATE_LIMIT_TRIES = 3
@@ -63,13 +115,25 @@ RATE_LIMIT_MAX_WAIT = 30  # a longer Retry-After means a long ban; fail instead 
 
 
 def _call(method: str, path: str, **kw) -> dict:
-    for attempt in range(RATE_LIMIT_TRIES):
+    rate_attempts = 0
+    retried_auth = False
+    while True:
         r = _http.request(
             method, API + path, headers={"Authorization": f"Bearer {_token()}"}, **kw
         )
+        if r.status_code == 401:
+            if retried_auth:
+                raise SpotifyAuthError(
+                    f"{SpotifyAuthError.MARKER}: Spotify rejected a freshly refreshed "
+                    "access token. Reconnect this account."
+                )
+            _toks.pop(_refresh_token(), None)
+            retried_auth = True
+            continue
         if r.status_code == 429:
+            rate_attempts += 1
             wait = float(r.headers.get("Retry-After", 1))
-            last = attempt == RATE_LIMIT_TRIES - 1
+            last = rate_attempts >= RATE_LIMIT_TRIES
             if last or wait > RATE_LIMIT_MAX_WAIT:
                 raise RuntimeError(
                     f"rate limited on {path}, Spotify asked for {wait:g}s"
@@ -81,7 +145,6 @@ def _call(method: str, path: str, **kw) -> dict:
             # Spotify puts the actual reason in the body; raise_for_status alone hides it
             raise RuntimeError(f"{method} {path} -> {r.status_code}: {r.text[:300]}")
         return r.json() if r.content else {}
-    raise RuntimeError(f"rate limited on {path} after {RATE_LIMIT_TRIES} tries")
 
 
 def _track(t: dict) -> dict:
@@ -456,7 +519,7 @@ def _pages(path: str, limit: int, page: int = 50, **params) -> list[dict]:
 
 
 PLAYLIST_TTL = 300  # a playlist made mid-conversation should show up without a restart
-_cached: dict = {"at": 0.0, "value": []}
+_cached: dict[str, dict] = {}  # keyed by account, never shared across profiles
 
 
 def _playlists(limit: int = 200) -> list[dict]:
@@ -466,10 +529,12 @@ def _playlists(limit: int = 200) -> list[dict]:
     name resolution and once per agent turn to tell the model what the user's
     playlists are called.
     """
-    if _cached["value"] and time.time() - _cached["at"] < PLAYLIST_TTL:
-        return _cached["value"][:limit]
+    refresh = _refresh_token()
+    hit = _cached.get(refresh)
+    if hit and time.time() - hit["at"] < PLAYLIST_TTL:
+        return hit["value"][:limit]
     fresh = [p for p in _pages("/me/playlists", 200) if p]
-    _cached.update(at=time.time(), value=fresh)
+    _cached[refresh] = {"at": time.time(), "value": fresh}
     return fresh[:limit]
 
 
@@ -966,8 +1031,40 @@ if __name__ == "__main__":
         rows = [{"url": "a"}, {"url": "b"}, {"url": "a"}]
         assert [t["url"] for t in _dedupe(rows)] == ["a", "b"]
         assert _lyric_score(["leaving"], "no match here") == (0.0, "")  # honest empty
-        _tok.update(value="cached", expires=time.time() + 3600)
-        assert _token() == "cached"  # no network call when unexpired
+
+        # whose token: set_active wins over env, env is the CLI fallback
+        env_refresh = os.environ.get("SPOTIFY_REFRESH_TOKEN", "")
+        set_active_refresh_token("active-token")
+        assert _refresh_token() == "active-token"
+        set_active_refresh_token(None)
+        assert _refresh_token() == env_refresh
+        # one access-token cache per refresh token, so profiles never share
+        _toks["a"] = {"value": "A", "expires": time.time() + 3600}
+        _toks["b"] = {"value": "B", "expires": time.time() + 3600}
+        set_active_refresh_token("a")
+        assert _token() == "A"  # no network call when unexpired
+        set_active_refresh_token("b")
+        assert _token() == "B", "switching profiles must switch caches"
+        # a refused refresh is an auth error carrying the reconnect marker
+        class _Denied:
+            status_code, text = 400, '{"error": "invalid_grant"}'
+
+        # dummies so the refusal is Spotify's, not a missing client id (CI has no .env)
+        os.environ["SPOTIFY_CLIENT_ID"] = os.environ.get("SPOTIFY_CLIENT_ID") or "selfcheck-cid"
+        os.environ["SPOTIFY_CLIENT_SECRET"] = (
+            os.environ.get("SPOTIFY_CLIENT_SECRET") or "selfcheck-secret"
+        )
+        real_post = _http.post
+        _http.post = lambda *a, **k: _Denied()
+        set_active_refresh_token("dead")  # uncached, so the post is really reached
+        try:
+            _token()
+            raise AssertionError("a refused refresh must raise")
+        except SpotifyAuthError as e:
+            assert SpotifyAuthError.MARKER in str(e), str(e)
+        finally:
+            _http.post = real_post
+        set_active_refresh_token(None)
         print("ok")
     else:
         app.run()
