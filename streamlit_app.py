@@ -4,6 +4,10 @@
 
 Forms are generated from each tool's input schema, so adding a tool to
 spotify_mcp.py makes it show up here with no changes to this file.
+
+A name screen and a Spotify connect screen gate everything: each profile
+carries its own authorization, stored encrypted by the user store, and no
+Spotify call runs until the account is linked.
 """
 
 import asyncio
@@ -12,16 +16,272 @@ import os
 import uuid
 
 import streamlit as st
+from streamlit.errors import StreamlitSecretNotFoundError
 from langgraph.checkpoint.memory import InMemorySaver
 
+# Streamlit Cloud exposes configured secrets via st.secrets, not os.environ.
+# Load them before importing modules that initialize their API clients from env.
+try:
+    _secrets = st.secrets.to_dict()
+except StreamlitSecretNotFoundError:
+    _secrets = {}
+for _name in (
+    "SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET", "USERS_DB_KEY",
+    "OPENROUTER_API_KEY", "OPENROUTER_MODEL", "HF_TOKEN", "LASTFM_API_KEY",
+):
+    if _secrets.get(_name) and not os.environ.get(_name):
+        os.environ[_name] = str(_secrets[_name])
+
 import agent
+import spotify_oauth
+import store
 from psych_mcp import app as psych_app
+import spotify_mcp
 from spotify_mcp import app
 
 if __name__ == "__main__" and not st.runtime.exists():
     raise SystemExit("run this with:  streamlit run streamlit_app.py")
 
 st.set_page_config(page_title="Spotify MCP", page_icon="🎧", layout="wide")
+
+
+def _login_gate() -> None:
+    """The name screen. Identity is the store's user_id; the name is a lookup handle.
+
+    A name someone already uses gets a confirmation screen rather than a silent
+    reuse, because a name alone cannot prove who is typing. A name nobody uses
+    yet stores nothing here: the profile is only created once Spotify has
+    authorized, because the Spotify account id is the real identity.
+    """
+    if st.session_state.get("user_id"):
+        return
+    st.title("🎧 Spotify MCP")
+    st.caption("An agent over the tools, or the tools by hand.")
+    submitted = st.session_state.get("login_name_submitted")
+    candidates = st.session_state.get("login_candidates")
+    if submitted and not candidates:
+        return  # the connect screen owns this name now
+    if not submitted:
+        st.subheader("What should I call you?")
+        name = st.text_input(
+            "Name", max_chars=40, key="login_name", label_visibility="collapsed"
+        )
+        if st.button("Continue", key="login_continue", type="primary"):
+            clean = " ".join(name.split())
+            if not clean:
+                st.warning("Enter a name to continue.")
+                st.stop()
+            st.session_state.login_name_submitted = clean
+            if matches := store.find_users(clean):
+                # ask before reusing: someone else may share the name
+                st.session_state.login_candidates = matches
+            st.rerun()  # straight to the cards, or to the connect screen
+        st.stop()
+
+    st.subheader("Is this your account?")
+    for cand in candidates:
+        bound = bool(cand["connected"])
+        card = (
+            f"**{cand['display_name']}** · joined {cand['created_at'][:10]} · "
+            f"last seen {cand['last_seen_at'][:10]} · "
+            + (
+                f"Spotify: **{cand['spotify_name'] or cand['spotify_user_id']}**"
+                if bound
+                else "Spotify not connected"
+            )
+        )
+        st.markdown(card)
+        if st.button("Yes, it's me", key=f"login_yes_{cand['id']}", type="primary"):
+            store.touch(cand["id"])
+            st.session_state.user_id = cand["id"]
+            st.session_state.user_name = cand["display_name"]
+            st.session_state.pop("login_candidates", None)
+            st.rerun()
+    if st.button("No, this is a new account", key="login_new"):
+        # keep the submitted name; the profile is created only after the connect
+        st.session_state.pop("login_candidates", None)
+        st.rerun()
+    st.stop()
+
+
+def _my_refresh() -> str | None:
+    """The signed-in profile's refresh token, read at call time. Session state
+    never holds tokens; the store does, encrypted."""
+    if not st.session_state.get("user_id"):
+        return None
+    auth = store.get_spotify_auth(st.session_state.user_id)
+    return auth["refresh_token"] if auth else None
+
+
+def _require_reconnect() -> None:
+    """Gate the next run until this profile authorizes again."""
+    st.session_state.auth_ok = False
+    st.session_state.auth_failed = True
+    st.session_state.reconnect = True
+    st.session_state.pending = None
+
+
+def _finish_connect(user_id: str, token: dict, profile: dict, *, already_saved=False) -> None:
+    """Bind the authorization and go: overwrite for a reconnect, fresh row for
+    a first connect. Either way the old capture never survives."""
+    if not already_saved:
+        store.save_spotify_auth(
+            user_id,
+            token["refresh_token"],
+            scopes=token.get("scope", ""),
+            spotify_user_id=profile["id"],
+            spotify_name=profile.get("display_name") or profile["id"],
+        )
+    if state := st.session_state.get("oauth_state"):
+        spotify_oauth.forget_state(state)
+    st.session_state.auth_ok = True
+    st.session_state.pop("auth_failed", None)
+    st.session_state.pop("reconnect", None)
+    st.session_state.pop("oauth_state", None)
+    st.session_state.pop("oauth_paste", None)
+    st.session_state.pop("spotify_taken", None)
+    st.session_state.pop("login_candidates", None)
+    st.session_state.pop("login_name_submitted", None)
+    st.rerun()
+
+
+def _connect_gate() -> None:
+    """Nobody reaches a Spotify tool before the profile has its own authorization.
+
+    The redirect comes back two ways: a listener on 127.0.0.1:8888 (local), or
+    pasting the URL Spotify landed on (anywhere, including a cloud deploy where
+    nothing is listening on the viewer's machine). The state ties a redirect to
+    this attempt; a mismatch is refused rather than trusted.
+    """
+    user_id = st.session_state.get("user_id")
+    submitted = st.session_state.get("login_name_submitted")
+    if not user_id and not submitted:
+        return  # the name screen owns this run
+    reconnect = st.session_state.get("reconnect") or st.session_state.get("auth_failed")
+    auth = None
+    if user_id:
+        try:
+            auth = store.get_spotify_auth(user_id)
+        except RuntimeError:  # a lost/rotated Fernet key also needs fresh authorization
+            st.session_state.auth_failed = True
+            st.session_state.auth_ok = False
+            reconnect = True
+    if auth and not reconnect:
+        st.session_state.auth_ok = True
+        return
+
+    st.title("🎧 Spotify MCP")
+    st.subheader("Connect Spotify")
+    st.caption(
+        "Every call runs on your own authorization, so nothing works until the account is linked."
+    )
+
+    if taken_id := st.session_state.get("spotify_taken"):
+        taken = store.get_user(taken_id)
+        if not taken:
+            st.session_state.pop("spotify_taken", None)
+            st.rerun()
+        # the Spotify id is the strong identity, so a bind collision resolves here
+        st.warning(f"That Spotify account is already linked as **{taken['display_name']}**.")
+        if st.button(f"Continue as {taken['display_name']}", key="taken_yes", type="primary"):
+            spotify_oauth.forget_state(st.session_state.get("oauth_state", ""))
+            store.touch(taken["id"])
+            st.session_state.user_id = taken["id"]
+            st.session_state.user_name = taken["display_name"]
+            st.session_state.auth_ok = True
+            for key in ("thread", "chat", "pending", "mode", "reconnect"):
+                st.session_state.pop(key, None)  # a different profile needs a new conversation
+            st.session_state.pop("auth_failed", None)
+            st.session_state.pop("spotify_taken", None)
+            st.session_state.pop("oauth_state", None)
+            st.session_state.pop("oauth_paste", None)
+            st.session_state.pop("login_name_submitted", None)
+            st.rerun()
+        if st.button("Use a different account", key="taken_no"):
+            spotify_oauth.forget_state(st.session_state.get("oauth_state", ""))
+            st.session_state.pop("spotify_taken", None)
+            st.session_state.pop("user_id", None)
+            st.session_state.pop("login_name_submitted", None)
+            st.session_state.pop("oauth_state", None)
+            st.session_state.pop("oauth_paste", None)
+            st.rerun()
+        st.stop()
+
+    if st.session_state.get("auth_failed"):
+        st.warning(
+            "The stored Spotify authorization cannot be used. Reconnect below."
+        )
+    state = st.session_state.get("oauth_state") or spotify_oauth.new_state()
+    st.session_state.oauth_state = state
+    spotify_oauth.register_state(state)
+    listening = spotify_oauth.start_listener()
+    st.markdown(
+        f"1. open [the Spotify authorize page]({spotify_oauth.authorize_url(state)}) and approve"
+    )
+    st.caption(
+        "listening on `http://127.0.0.1:8888/callback`, so the approval lands here"
+        if listening
+        else "not listening locally (port busy, or a cloud deploy): paste the URL instead"
+    )
+    pasted = st.text_input("or paste the URL Spotify sent you to", key="oauth_paste")
+    submitted_paste = st.button("Use pasted redirect", key="oauth_submit")
+    result = spotify_oauth.poll_listener(state)
+    if not result and submitted_paste:
+        result = spotify_oauth.parse_paste_url(pasted)
+        if not result:
+            st.error("Paste the complete Spotify redirect URL, including code and state.")
+            st.stop()
+    if not result:
+        if st.button("I approved it — check again", key="oauth_check"):
+            st.rerun()
+        st.stop()
+    if result.get("state") != state:
+        st.error(
+            "That redirect is not from this screen (state mismatch). Approve again from the link above."
+        )
+        st.stop()
+    if result.get("error"):
+        st.error(f"Spotify said: {result['error']}")
+        st.stop()
+
+    try:
+        with st.spinner("linking the account..."):
+            token = spotify_oauth.exchange(result["code"])
+            profile = spotify_oauth.me(token["access_token"])
+    except (RuntimeError, ValueError, KeyError) as exc:
+        st.error(f"Could not connect Spotify: {exc}. Approve again and try a new redirect.")
+        st.stop()
+    existing = store.find_by_spotify_id(profile["id"])
+    if existing and existing["id"] != user_id:
+        st.session_state.spotify_taken = existing["id"]
+        st.rerun()
+    if user_id:
+        bound = store.get_user(user_id)
+        if bound["spotify_user_id"] and bound["spotify_user_id"] != profile["id"]:
+            st.error("This profile belongs to another Spotify account. Reconnect that account.")
+            st.stop()
+    if not user_id:
+        # Create and bind together; a concurrent connect to this Spotify id
+        # returns the existing profile rather than leaving an orphan name.
+        user, created = store.create_spotify_user(
+            submitted or profile.get("display_name") or profile["id"],
+            token["refresh_token"], spotify_user_id=profile["id"],
+            spotify_name=profile.get("display_name") or profile["id"],
+            scopes=token.get("scope", ""),
+        )
+        if not created:
+            st.session_state.spotify_taken = user["id"]
+            st.rerun()
+        st.session_state.user_id = user["id"]
+        st.session_state.user_name = user["display_name"]
+        user_id = user["id"]
+        _finish_connect(user_id, token, profile, already_saved=True)
+    else:
+        _finish_connect(user_id, token, profile)
+
+
+_login_gate()
+_connect_gate()
 
 
 @st.cache_resource
@@ -177,6 +437,13 @@ def _continue(approve: bool, key: str) -> None:
     """Answer the pending approval and let the turn finish."""
     os.environ[agent.KEY_VAR] = key
     parts: list[tuple[str, str]] = []
+
+    def show(kind: str, text: str) -> None:
+        if kind == "auth_error":
+            _require_reconnect()
+        else:
+            parts.append(("text" if kind == "token" else kind, text))
+
     with st.chat_message("assistant"):
         if not approve:
             st.markdown("_declined_")
@@ -186,12 +453,11 @@ def _continue(approve: bool, key: str) -> None:
                 st.session_state.pending = asyncio.run(
                     agent.decide(
                         approve,
-                        lambda kind, text: parts.append(
-                            ("text" if kind == "token" else kind, text)
-                        ),
+                        show,
                         checkpointer=_memory(),
                         thread_id=st.session_state.thread,
                         mode=st.session_state.mode,
+                        spotify_refresh_token=_my_refresh(),
                     )
                 )
             except Exception as exc:  # noqa: BLE001 - surface model and API failures
@@ -199,6 +465,8 @@ def _continue(approve: bool, key: str) -> None:
                     raise  # a rerun or Stop, not a failure
                 st.error(f"{type(exc).__name__}: {exc}")
                 return
+    if st.session_state.get("auth_failed"):
+        st.rerun()
     merged: list[tuple[str, str]] = []
     for kind, text in parts:  # rejoin streamed tokens for the history
         if kind == "text" and merged and merged[-1][0] == "text":
@@ -326,6 +594,10 @@ def _agent_panel() -> None:
 
         def show(kind: str, text: str) -> None:
             """Render output as it arrives: tokens grow in place, tools appear between."""
+            if kind == "auth_error":
+                _require_reconnect()
+                st.warning("Spotify disconnected. Reconnect your account to keep using its tools.")
+                return
             if kind == "token":
                 if live["box"] is None:
                     live["box"] = st.empty()
@@ -346,6 +618,7 @@ def _agent_panel() -> None:
                         thread_id=st.session_state.thread,
                         mode=st.session_state.mode,
                         attachments=attachments,
+                        spotify_refresh_token=_my_refresh(),
                     )
                 )
             except Exception as exc:  # noqa: BLE001 - surface model and API failures
@@ -375,6 +648,21 @@ with st.sidebar:
     st.header("Mode")
     mode = st.radio("Mode", ["Agent", "Tools"], label_visibility="collapsed")
     st.divider()
+    if uid := st.session_state.get("user_id"):
+        auth = store.get_spotify_auth(uid)
+        st.caption(
+            f"signed in as **{st.session_state.user_name}** · "
+            + (
+                f"Spotify **{auth['spotify_name']}**"
+                if auth
+                else "no Spotify binding"
+            )
+        )
+        if st.button("Reconnect Spotify"):
+            # the connect screen re-runs OAuth and overwrites the stored token
+            st.session_state.auth_ok = False
+            st.session_state.reconnect = True
+            st.rerun()
     st.caption("Tools on the server")
     for tool in tools:
         st.markdown(f"**{tool.name}**  \n{(tool.description or '').strip()}")
@@ -401,13 +689,23 @@ if st.button("Run", type="primary"):
     else:
         with st.spinner("calling Spotify..."):
             try:
-                result = asyncio.run(_home[tool.name].call_tool(tool.name, args))
+                with spotify_mcp.use_refresh_token(_my_refresh()):
+                    result = asyncio.run(_home[tool.name].call_tool(tool.name, args))
             except Exception as exc:  # noqa: BLE001 - surface anything the API throws
                 st.error(f"{type(exc).__name__}: {exc}")
+                if spotify_mcp.SpotifyAuthError.MARKER in str(exc):
+                    # refused refresh: the account has to reconnect, not retry
+                    _require_reconnect()
+                    st.rerun()
                 if "missing env var" in str(exc):
                     st.info("Run `python get_token.py` first to write .env")
             else:
                 # FastMCP 1.x returns (content_blocks, structured_result)
                 blocks = result[0] if isinstance(result, tuple) else result
-                for block in blocks:
-                    _render(getattr(block, "text", str(block)))
+                texts = [getattr(block, "text", str(block)) for block in blocks]
+                for text in texts:
+                    _render(text)
+                if any(spotify_mcp.SpotifyAuthError.MARKER in t for t in texts):
+                    # a tool error reaches the UI as text, never as the type
+                    _require_reconnect()
+                    st.rerun()
