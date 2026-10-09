@@ -70,7 +70,8 @@ python -m streamlit run streamlit_app.py
 ```
 
 To use `agent.py` or `run_tool.py` directly, run `python get_token.py` once to
-write their separate `.env` refresh token. Spotify rejects `localhost` for this
+write their separate `.env` refresh token. Run it again whenever the scope list
+changes, as it just did. Spotify rejects `localhost` for this
 flow; use the exact `127.0.0.1` redirect above.
 
 ## Configuration
@@ -98,6 +99,7 @@ The Spotify refresh token requests these scopes:
 - `user-follow-read`
 - `user-library-read`
 - `user-read-playback-state`
+- `user-modify-playback-state`
 
 Never commit `.env` or Streamlit secrets. The repository ignore rules cover both.
 
@@ -160,11 +162,12 @@ attempt. Missing scopes or tokens abort the connect without creating a profile.
 | Mode | Behavior |
 |---|---|
 | `/manual` | Every tool call waits for approval. |
-| `/afk` | Most reads run automatically; `my_playlists`, `playlist_tracks`, and `create_playlist` wait. |
+| `/afk` | Most reads run automatically; playlist tools and playback commands wait. |
 | `/auto` | All tools run without approval. |
 
 The UI starts in AFK mode. `/mode` shows the current mode and `/help` lists the
-available commands. `create_playlist` is the only Spotify write tool.
+available commands. The playlist tools and the playback commands are the only
+Spotify writes.
 
 ## Tool Inventory
 
@@ -199,6 +202,17 @@ available commands. `create_playlist` is the only Spotify write tool.
 | `playlist_names` | Return playlist names for agent context. |
 | `playlist_tracks` | Read an accessible playlist by name, ID, URI, or URL. |
 | `create_playlist` | Create a private playlist and add tracks. |
+
+### Playback
+
+All four act on the active device, need Spotify Premium, and wait in AFK mode.
+
+| Tool | Purpose |
+|---|---|
+| `resume` | Resume playback. |
+| `pause` | Pause playback. |
+| `next_track` | Skip to the next track. |
+| `previous_track` | Go back to the previous track. |
 
 ### Psychology
 
@@ -262,6 +276,7 @@ directly. Benchmarks resolve the root explicitly and write generated output only
 | [Jev pilot](docs/benchmarks/archive/jev-pilot.md) | Superseded six-case pilot retained for history. |
 | [Multi-model design](docs/design/multi-model.md) | Embedding, verifier, failover, and cascade analysis. |
 | [Spotify API survey](docs/research/spotify/api-surface.md) | Live endpoint survey and third-party replacements. |
+| [Poetry analysis notes](docs/research/poetry-analysis.md) | Exploration sketch for reading lyrics as poetry. |
 | [Jev reference notes](docs/research/jev/reference.md) | Imported API research with repository-specific scope notes. |
 | [LinkedIn draft](docs/outreach/linkedin-jev-draft.md) | Outreach draft based on the Jev experiments. |
 | [Intelligence levels](docs/research/models/intelligence-levels.pdf) | Research notes on reasoning budgets and agent loops. |

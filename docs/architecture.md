@@ -72,9 +72,11 @@ MCP and are converted into model context by `agent.py`.
 
 ## Safety Boundary
 
-`create_playlist` is the only Spotify write tool. Manual mode gates every tool call.
-AFK mode gates `my_playlists`, `playlist_tracks`, and `create_playlist` while other
-tools run automatically. Auto mode runs all calls. A refused refresh token surfaces
+Two kinds of Spotify write exist: `create_playlist`, and the playback commands
+(`resume`, `pause`, `next_track`, `previous_track`), which act on the active
+device and need Premium. Manual mode gates every tool call. AFK mode gates the
+playlist tools and the playback commands while other tools run automatically.
+Auto mode runs all calls. A refused refresh token surfaces
 as a `Spotify disconnected` marker, and the UI answers it with a reconnect screen
 rather than a retry. The deployment binds several named profiles to one Spotify
 developer app, so it still must not be exposed publicly.

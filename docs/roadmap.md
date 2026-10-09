@@ -6,13 +6,6 @@ Living list. Updated 2026-10-09. Current decisions go in
 Ordered by what blocks the most. Check items off, do not delete them, so the
 Done section records what was actually finished.
 
-## Immediate priorities
-
-- [ ] **Add agent playback controls: resume, pause, next, and previous.** Expose four
-  Spotify MCP tools using the active device, require `user-modify-playback-state`,
-  Spotify Premium, and a newly minted refresh token, and gate all four in AFK mode.
-  CI must mock these write endpoints rather than controlling a real player.
-
 ## Blocking the abstract
 
 - [ ] **Validate trait movement over real weeks, not synthetic texts.** The psych
@@ -203,6 +196,12 @@ Done section records what was actually finished.
   terms present in the lyrics, so it rewards literal wording and misses
   paraphrase ("headlights" will not match "high beams"). Embeddings would fix
   that; the emotion classifier from the psych server would fix it better.
+- [ ] **Explore integrating poetry analysis.** Lyrics are already fetched and
+  scored for emotion; the same text can be read as poetry (form, meter, rhyme,
+  imagery, devices), a signal the emotion labels do not touch. Sketch:
+  [poetry analysis notes](research/poetry-analysis.md). To decide: which model or
+  service does the reading, whether it augments the psych tools or
+  `playlist_vibe`, and what it does about Devanagari.
 - [X] **2026-08-16** — Detect empty search results. `_relevant()` requires a query word
   in the title or artist, so a nonsense query returns nothing instead of noise. Spotify's search never returns nothing: a
   meaningless query still yields arbitrary tracks (verified with
@@ -249,6 +248,15 @@ Done section records what was actually finished.
   and ambiguity. See [Jev tool selection](benchmarks/jev-tool-selection.md).
 
 ## Done
+
+- [X] **2026-10-09 - Add agent playback controls: resume, pause, next, previous.**
+  Four Spotify MCP tools over the active device, gated in AFK mode like the
+  playlist writes. The new `user-modify-playback-state` scope is requested on
+  every fresh connect; a token minted before the scope existed gets a
+  "reconnect" refusal from a scope pre-check rather than a mystery 403, and
+  Premium and no-active-device refusals translate to what they mean. A real
+  player stays untestable in CI, so the selfcheck drives the four commands
+  against a mocked player.
 
 - [X] **2026-10-09 - Per-user Spotify auth with isolated library context.** Name
   login plus a Spotify connect gate: profiles live in `data/users.db` keyed by

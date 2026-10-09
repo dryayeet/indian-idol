@@ -65,7 +65,9 @@ Probed with 37 requests against the real account. `OK` means it answered with da
 `PUT /me/library` and `DELETE /me/library` replaced every per-type save, unsave,
 follow, and unfollow endpoint. `PUT /playlists/{id}/items` reorders. `DELETE
 /playlists/{id}/items` removes. None are built: this agent reads and creates, and
-nothing else. See the [roadmap](../../roadmap.md) for what a write surface would cost.
+nothing else. The exception is playback: `resume`, `pause`, `next_track`, and
+`previous_track` were added 2026-10-09; they act on the listener's player, not
+their library. See the [roadmap](../../roadmap.md) for what a write surface would cost.
 
 ## 2. What other Spotify MCP servers expose
 
@@ -82,10 +84,11 @@ their tools are irrelevant here, and a few are already impossible.
 
 ### Their tools, grouped
 
-**Playback** (none built here, all need `user-modify-playback-state` and a Premium
-account with an active device): play, pause, resume, skip next, skip previous, seek,
-set volume, set repeat, toggle shuffle, add to queue, get queue, list devices,
-transfer playback, now playing, playback state.
+**Playback** (four built here: `resume`, `pause`, `next_track`, `previous_track`,
+gated in AFK mode; all need `user-modify-playback-state` and a Premium account
+with an active device, and `now_playing` already exists under the read scope):
+not built are seek, set volume, set repeat, toggle shuffle, add to queue, get
+queue, list devices, transfer playback, playback state.
 
 **Library reads** (mostly built): saved tracks, saved albums, saved shows, top tracks,
 top artists, recently played, user profile, playlist list, playlist details, playlist
@@ -184,8 +187,10 @@ In the [roadmap](../../roadmap.md), in order. Briefly:
 2. **Library stats and query**, the one genuinely good idea in the other servers:
    fold the library into one summary rather than making the model read four lists.
 3. **Deduplicate and merge**, which are pure local logic over data already reachable.
-4. **Playback control**, if the agent should ever act on the mood it infers rather
-   than only describe it. Needs Premium and a live device, so it is untestable in CI.
+4. **Playback control**, built 2026-10-09: resume, pause, next, previous on the
+   active device, with honest refusals for a missing scope, missing Premium,
+   and no active device. Still untestable in CI against a real player; the
+   selfcheck exercises it against a mocked one.
 
 Deliberately not taken: anything that requires Spotify's `/recommendations`, native
 `/related-artists`, or native audio-feature endpoints. Third-party replacements are
