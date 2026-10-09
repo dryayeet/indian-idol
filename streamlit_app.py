@@ -283,6 +283,19 @@ def _connect_gate() -> None:
 _login_gate()
 _connect_gate()
 
+# what each scope unlocks, so a stale grant reads as a missing feature rather
+# than a raw permission string
+_SCOPE_LABELS = {
+    "user-modify-playback-state": "playback controls",
+    "user-read-playback-state": "reading what is playing",
+    "user-read-recently-played": "recently played",
+    "user-top-read": "top tracks and artists",
+    "playlist-modify-private": "creating playlists",
+    "playlist-read-private": "reading playlists",
+    "user-follow-read": "followed artists",
+    "user-library-read": "saved music",
+}
+
 
 @st.cache_resource
 def _tools():
@@ -658,6 +671,16 @@ with st.sidebar:
                 else "no Spotify binding"
             )
         )
+        # a grant minted before a scope was added keeps working for everything
+        # else; say what is missing before a chat turn finds out the hard way
+        if auth and (
+            missing := set(spotify_oauth.SCOPES.split())
+            - set((auth.get("scopes") or "").split())
+        ):
+            st.warning(
+                "Reconnect Spotify to enable: "
+                + ", ".join(sorted(_SCOPE_LABELS.get(s, s) for s in missing))
+            )
         if st.button("Reconnect Spotify"):
             # the connect screen re-runs OAuth and overwrites the stored token
             st.session_state.auth_ok = False

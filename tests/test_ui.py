@@ -106,6 +106,7 @@ def main() -> None:
         _listener_flow()
         _mode_controls()
         _reconnect_flow()
+        _stale_scope_hint_flow()
         _incomplete_redirect()
         _tools_use_signed_in_account()
         _agent_failure_requires_reconnect()
@@ -266,6 +267,32 @@ def _reconnect_flow() -> None:
     _assert_clean(refused, "reconnect wrong account")
     assert len(refused.error) == 1
     assert store.get_spotify_auth(uid)["spotify_user_id"] == "SID"
+
+
+def _stale_scope_hint_flow() -> None:
+    """A grant missing newly requested scopes says so in the sidebar, up front."""
+    user = store.create_user("stale")
+    old_grant = " ".join(
+        s for s in spotify_oauth.SCOPES.split() if s != "user-modify-playback-state"
+    )
+    store.save_spotify_auth(
+        user["id"], "refresh-stale", scopes=old_grant,
+        spotify_user_id="spotify-stale", spotify_name="stale",
+    )
+    app = _new_app()
+    app.run()
+    _enter_name(app, "stale")
+    app.button(key=f"login_yes_{user['id']}").click().run()
+    _assert_clean(app, "stale grant login")
+    assert len(app.sidebar.warning) == 1, "the missing feature should be visible"
+    assert "playback controls" in app.sidebar.warning[0].value
+    # a reconnect with the full grant retires the hint
+    _fake_me("spotify-stale", "stale")
+    app.sidebar.button[0].click().run()
+    _paste_connect(app)
+    _assert_clean(app, "stale grant reconnect")
+    assert len(app.sidebar.warning) == 0
+    assert store.get_spotify_auth(user["id"])["scopes"] == spotify_oauth.SCOPES
 
 
 def _incomplete_redirect() -> None:

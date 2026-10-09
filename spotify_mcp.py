@@ -917,6 +917,15 @@ def now_playing() -> dict:
 
 PLAYBACK_SCOPE = "user-modify-playback-state"
 
+# An instruction, not a state: the model relays this to the user instead of
+# guessing at reasons (Premium, connection, ...) the way it paraphrased the
+# first wording of this message.
+RECONNECT_GUIDANCE = (
+    "playback is not enabled for this account yet: ask the user to reconnect "
+    "Spotify from the app's sidebar and approve the new access, then try this "
+    "command again. Nothing was changed."
+)
+
 
 def _require_scope(need: str) -> None:
     """Fail before the request when the grant never included this scope.
@@ -930,9 +939,7 @@ def _require_scope(need: str) -> None:
         refresh = _refresh_token()
     granted = _toks.get(refresh, {}).get("scope") or ""
     if need not in granted:
-        raise RuntimeError(
-            f"this account has not granted {need}: reconnect it to add playback control"
-        )
+        raise RuntimeError(RECONNECT_GUIDANCE)
 
 
 def _player_command(method: str, path: str, action: str) -> dict:
@@ -945,9 +952,7 @@ def _player_command(method: str, path: str, action: str) -> dict:
     except SpotifyAPIError as e:
         body = e.body.lower()
         if e.status == 403 and "scope" in body:
-            raise RuntimeError(
-                "this account has not granted playback control: reconnect it"
-            ) from None
+            raise RuntimeError(RECONNECT_GUIDANCE) from None
         if e.status == 403:
             raise RuntimeError("playback commands need Spotify Premium") from None
         if e.status == 404:
@@ -1187,12 +1192,13 @@ if __name__ == "__main__":
                     tool()
                     raise AssertionError("an ungranted scope must refuse before the call")
                 except RuntimeError as e:
-                    assert "reconnect" in str(e), str(e)
+                    # the refusal must tell the model what to tell the user
+                    assert "reconnect" in str(e) and "sidebar" in str(e), str(e)
             assert not sent[4:], "a refused pre-check must not touch the player"
             # each refusal body translates to what it means
             set_active_refresh_token("r")
             for status, text, want in (
-                (403, '{"error":{"message":"Insufficient scope"}}', "reconnect"),
+                (403, '{"error":{"message":"Insufficient scope"}}', "sidebar"),
                 (403, '{"error":{"message":"Player command failed: Premium required"}}', "Premium"),
                 (404, '{"error":{"message":"Player command failed: No active device found"}}', "active device"),
             ):
