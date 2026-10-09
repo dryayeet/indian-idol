@@ -58,7 +58,9 @@ You never know a track's link: give every track as a markdown link copied from t
 `url` a tool returned this turn, like [Title](url), then the artist. Never assemble a
 link from an id or from memory; that invents links to the wrong song or to nothing.
 Only create a playlist when asked. When you do, say what you were aiming for in its
-description.
+description. The playback commands (resume, pause, next_track, previous_track) act on
+whatever is playing right now: use them when asked, and say what they did, not what
+"the system" did.
 </always call a tool first>
 
 <how you talk>
@@ -336,10 +338,18 @@ def _shrink_old_tools(state: dict) -> dict:
     return {"llm_input_messages": trimmed}
 
 
-PLAYLIST_TOOLS = {"my_playlists", "playlist_tracks", "create_playlist"}
+GATED_TOOLS = {
+    "my_playlists",
+    "playlist_tracks",
+    "create_playlist",
+    "resume",
+    "pause",
+    "next_track",
+    "previous_track",
+}
 MODES = {
     "manual": "every tool call waits for you",
-    "afk": "most reads run freely; playlist list, track reads, and writes wait",
+    "afk": "most reads run freely; playlist and playback commands wait for you",
     "auto": "everything runs, nothing waits",
 }
 
@@ -349,7 +359,7 @@ def needs_approval(mode: str, tool: str) -> bool:
     if mode == "auto":
         return False
     if mode == "afk":
-        return tool in PLAYLIST_TOOLS
+        return tool in GATED_TOOLS
     return True  # manual
 
 
@@ -616,7 +626,14 @@ async def _selfcheck() -> None:
     assert {
         "search_by_feel", "create_playlist", "get_lyrics",
         "get_big_five", "get_emotion_labels",
+        "resume", "pause", "next_track", "previous_track",
     } <= set(names), names
+    # playback touches the listener's real player, so afk holds it like a write
+    for player in ("resume", "pause", "next_track", "previous_track"):
+        assert needs_approval("afk", player), player
+        assert needs_approval("manual", player), player
+    assert not needs_approval("auto", "pause"), "auto runs everything"
+    assert not needs_approval("afk", "get_lyrics"), "a read must run freely in afk"
     feel = next(t for t in tools if t.name == "search_by_feel")
     schema = feel.args_schema["properties"]
     assert "valence" in schema and "description" in schema, schema

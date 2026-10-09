@@ -36,6 +36,7 @@ SCOPES = " ".join(
         "user-follow-read",  # followed_artists
         "user-library-read",  # liked_songs, saved_albums, saved_podcasts
         "user-read-playback-state",  # now_playing
+        "user-modify-playback-state",  # resume, pause, next_track, previous_track
     )
 )
 AUTH_URL = "https://accounts.spotify.com/authorize"

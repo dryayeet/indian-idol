@@ -40,6 +40,16 @@ class SpotifyAuthError(RuntimeError):
     MARKER = "Spotify disconnected"
 
 
+class SpotifyAPIError(RuntimeError):
+    """A refused request, carrying the status and body so callers can translate
+    them honestly instead of guessing from a flattened message."""
+
+    def __init__(self, method: str, path: str, status: int, body: str):
+        super().__init__(f"{method} {path} -> {status}: {body}")
+        self.status = status
+        self.body = body
+
+
 # ContextVars follow an in-process tool call into its asyncio task. A process
 # global here could silently run one viewer's tool under another viewer's token.
 _active_refresh: ContextVar[str | None] = ContextVar("spotify_refresh", default=None)
@@ -106,7 +116,12 @@ def _token() -> str:
             "Check SPOTIFY_CLIENT_ID / SECRET / REFRESH_TOKEN are set correctly."
         )
     d = r.json()
-    _toks[refresh] = {"value": d["access_token"], "expires": time.time() + d["expires_in"]}
+    _toks[refresh] = {
+        "value": d["access_token"],
+        "expires": time.time() + d["expires_in"],
+        # what this grant may do; playback commands pre-check against it
+        "scope": d.get("scope", ""),
+    }
     return d["access_token"]
 
 
@@ -143,7 +158,7 @@ def _call(method: str, path: str, **kw) -> dict:
             continue
         if r.status_code >= 400:
             # Spotify puts the actual reason in the body; raise_for_status alone hides it
-            raise RuntimeError(f"{method} {path} -> {r.status_code}: {r.text[:300]}")
+            raise SpotifyAPIError(method, path, r.status_code, r.text[:300])
         return r.json() if r.content else {}
 
 
@@ -900,6 +915,73 @@ def now_playing() -> dict:
     return _track(item) | {"playing": bool(r.get("is_playing"))}
 
 
+PLAYBACK_SCOPE = "user-modify-playback-state"
+
+
+def _require_scope(need: str) -> None:
+    """Fail before the request when the grant never included this scope.
+
+    Refreshes first so the granted set is in the cache: a token minted before
+    the scope was added deserves a "reconnect" answer, not a mystery 403.
+    """
+    refresh = _refresh_token()
+    if not _toks.get(refresh):
+        _token()
+        refresh = _refresh_token()
+    granted = _toks.get(refresh, {}).get("scope") or ""
+    if need not in granted:
+        raise RuntimeError(
+            f"this account has not granted {need}: reconnect it to add playback control"
+        )
+
+
+def _player_command(method: str, path: str, action: str) -> dict:
+    """Run one playback command on the active device, translating the refusals
+    Spotify actually sends (403 scope, 403 Premium, 404 no device) into what
+    they mean, so the model stops instead of retrying."""
+    _require_scope(PLAYBACK_SCOPE)
+    try:
+        _call(method, path)
+    except SpotifyAPIError as e:
+        body = e.body.lower()
+        if e.status == 403 and "scope" in body:
+            raise RuntimeError(
+                "this account has not granted playback control: reconnect it"
+            ) from None
+        if e.status == 403:
+            raise RuntimeError("playback commands need Spotify Premium") from None
+        if e.status == 404:
+            raise RuntimeError(
+                "no active device: start playback on a device first"
+            ) from None
+        raise
+    return {"ok": True, "action": action}
+
+
+@app.tool()
+def resume() -> dict:
+    """Resume playback on the active device. Needs Spotify Premium."""
+    return _player_command("PUT", "/me/player/play", "resume")
+
+
+@app.tool()
+def pause() -> dict:
+    """Pause playback on the active device. Needs Spotify Premium."""
+    return _player_command("PUT", "/me/player/pause", "pause")
+
+
+@app.tool()
+def next_track() -> dict:
+    """Skip to the next track on the active device. Needs Spotify Premium."""
+    return _player_command("POST", "/me/player/next", "next_track")
+
+
+@app.tool()
+def previous_track() -> dict:
+    """Go back to the previous track on the active device. Needs Spotify Premium."""
+    return _player_command("POST", "/me/player/previous", "previous_track")
+
+
 @app.tool()
 def liked_songs(limit: int = 200) -> list[dict]:
     """The user's Liked Songs, newest first. Their library proper, not a playlist."""
@@ -1064,6 +1146,64 @@ if __name__ == "__main__":
             assert SpotifyAuthError.MARKER in str(e), str(e)
         finally:
             _http.post = real_post
+        set_active_refresh_token(None)
+
+        # playback: the grant gates before the request, and a refusal comes
+        # back as what it means, not as a raw 403/404 body
+        class _PlayerResp:
+            def __init__(self, status, text=""):
+                self.status_code, self.headers = status, {}
+                self.content, self.text = b"", text  # 204s carry no body
+
+        sent: list[tuple[str, str]] = []
+        real_player_request = _http.request
+        _http.request = lambda *a, **k: sent.append((a[0], a[1])) or _PlayerResp(204)
+        _toks["r"] = {
+            "value": "V",
+            "expires": time.time() + 3600,
+            "scope": f"user-read-playback-state {PLAYBACK_SCOPE}",
+        }
+        set_active_refresh_token("r")
+        try:
+            assert pause() == {"ok": True, "action": "pause"}
+            assert resume() == {"ok": True, "action": "resume"}
+            assert next_track() == {"ok": True, "action": "next_track"}
+            assert previous_track() == {"ok": True, "action": "previous_track"}
+            assert sent == [
+                ("PUT", "https://api.spotify.com/v1/me/player/pause"),
+                ("PUT", "https://api.spotify.com/v1/me/player/play"),
+                ("POST", "https://api.spotify.com/v1/me/player/next"),
+                ("POST", "https://api.spotify.com/v1/me/player/previous"),
+            ], sent
+            # a token minted before the scope existed says so, not 403
+            _toks["old"] = {
+                "value": "V",
+                "expires": time.time() + 3600,
+                "scope": "user-read-playback-state",
+            }
+            set_active_refresh_token("old")
+            for tool in (pause, resume, next_track, previous_track):
+                try:
+                    tool()
+                    raise AssertionError("an ungranted scope must refuse before the call")
+                except RuntimeError as e:
+                    assert "reconnect" in str(e), str(e)
+            assert not sent[4:], "a refused pre-check must not touch the player"
+            # each refusal body translates to what it means
+            set_active_refresh_token("r")
+            for status, text, want in (
+                (403, '{"error":{"message":"Insufficient scope"}}', "reconnect"),
+                (403, '{"error":{"message":"Player command failed: Premium required"}}', "Premium"),
+                (404, '{"error":{"message":"Player command failed: No active device found"}}', "active device"),
+            ):
+                _http.request = lambda *a, **k: _PlayerResp(status, text)
+                try:
+                    pause()
+                    raise AssertionError("a refused command must raise")
+                except RuntimeError as e:
+                    assert want in str(e), (want, str(e))
+        finally:
+            _http.request = real_player_request
         set_active_refresh_token(None)
         print("ok")
     else:
