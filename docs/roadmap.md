@@ -1,6 +1,6 @@
 # Roadmap
 
-Living list. Updated 2026-10-03. Current decisions go in
+Living list. Updated 2026-10-09. Current decisions go in
 [architecture.md](architecture.md); this file records what is still owed.
 
 Ordered by what blocks the most. Check items off, do not delete them, so the
@@ -8,11 +8,6 @@ Done section records what was actually finished.
 
 ## Immediate priorities
 
-- [ ] **Per-user Spotify auth with isolated library context.** Flow: viewer enters display name, connects Spotify via Authorization Code flow with state, agent uses that user's token for all Spotify calls and prompt playlist names. Store: `data/users.db` SQLite (gitignored) keyed by Spotify user ID with encrypted refresh tokens, scopes, and metadata; Streamlit `session_state` holds only display name and user ID, never tokens. Requires per-request token lookup, MCP user-context propagation, logout and revoke, 6-month re-auth, and mocked auth tests. Name alone is not identity.
-- [ ] **Add a session-only name entry screen.** Ask what to call the viewer before
-  rendering the main Streamlit UI, retain the trimmed name only in session state, and
-  clear the conversation and pending approvals when it changes. This is a welcome
-  screen, not authentication, and it does not change which Spotify account is used.
 - [ ] **Add agent playback controls: resume, pause, next, and previous.** Expose four
   Spotify MCP tools using the active device, require `user-modify-playback-state`,
   Spotify Premium, and a newly minted refresh token, and gate all four in AFK mode.
@@ -46,10 +41,6 @@ Done section records what was actually finished.
   ranks candidates by requested audio features when those controls move off their
   defaults, but ranking still does not use the listener's own history. Their
   `top_tracks` and `recently_played` data is available and unused for ranking.
-- [ ] **Spotify auth for other users.** Today one refresh token means one account,
-  which is also the reason the deployed app cannot be shared. Real per-user auth
-  means an OAuth callback, per-user token storage, and a server that is no longer
-  stateless. Worth designing before it is built.
 
 ## Quality
 
@@ -243,11 +234,11 @@ Done section records what was actually finished.
 - [ ] **Revisit the `mcp<2.0.0` pin** when `langchain-mcp-adapters` supports 2.0.
   Going back means `MCPServer`, `Tool.input_schema`, and a `.content` object
   instead of a tuple. See External Constraints in [architecture.md](architecture.md).
-- [ ] **Lock down the deployed Streamlit app.** It runs on one Spotify account
-  with no per-user login, so anyone with the URL controls that account and
-  spends the provider key. Restrict to named viewers, or add a shared password
-  gate. The approval modes help but do not solve it: `auto` is one click away,
-  and reads leak the account's history in every mode.
+- [ ] **Lock down the deployed Streamlit app.** Profiles now carry their own
+  Spotify bindings, but the name login is a lookup handle, not a password: anyone
+  with the URL can pick any profile and spend the provider key. Restrict to named
+  viewers, or add a shared password gate. The approval modes help but do not solve
+  it: `auto` is one click away.
 - [ ] **Reword the abstract's workflow 2.** It claims `target_valence` and
   `target_acousticness`, which no new Spotify app can use. What is built is
   keyword search over a model-written description, optional ReccoBeats feature
@@ -259,6 +250,17 @@ Done section records what was actually finished.
 
 ## Done
 
+- [X] **2026-10-09 - Per-user Spotify auth with isolated library context.** Name
+  login plus a Spotify connect gate: profiles live in `data/users.db` keyed by
+  Spotify user id, refresh tokens Fernet-encrypted under `USERS_DB_KEY`, and
+  session state never holds tokens. The UI connects accounts by
+  Authorization Code with per-attempt state, through a local `127.0.0.1:8888`
+  listener or pasting the redirected URL for cloud. Same-name profiles get "is
+  this your account?" cards; a Spotify id already bound elsewhere resolves to
+  that profile. Agent turns inject the profile's token into the spawned server's
+  env, Tools mode binds it per tool call, and a refused refresh shows a
+  reconnect screen. Design: [per-user auth](design/per-user-auth.md). Still owed
+  here: logout button, local revoke, 6-month re-auth banner.
 - [X] **2026-10-03 - Restore and test Big Five inference.** Hugging Face stopped
   serving `Minej/bert-base-personality`, so `get_big_five` now uses the hosted
   `facebook/bart-large-mnli` zero-shot model with paired high/low OCEAN labels.

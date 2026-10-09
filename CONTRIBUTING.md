@@ -28,9 +28,15 @@ or provider responses. Generated benchmark files belong under `artifacts/`.
 Run the offline checks before opening a pull request:
 
 ```powershell
-python -m compileall -q agent.py spotify_mcp.py psych_mcp.py streamlit_app.py run_tool.py get_token.py benchmarks tests
+python -m compileall -q agent.py spotify_mcp.py psych_mcp.py streamlit_app.py run_tool.py get_token.py spotify_oauth.py store.py benchmarks tests
 python psych_mcp.py --selfcheck
 python -m unittest -v tests.test_psych
+python -m unittest -v tests.test_store
+python -m unittest -v tests.test_auth
+python spotify_mcp.py --selfcheck
+python spotify_oauth.py --selfcheck
+python get_token.py --selfcheck
+python run_tool.py --selfcheck
 python benchmarks/bakeoff.py --selfcheck
 python benchmarks/bakeoff_jev.py --selfcheck
 python benchmarks/bakeoff_jev_40.py --selfcheck

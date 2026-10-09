@@ -24,12 +24,22 @@ jobs:
         run: python -m pip install -r requirements.txt
 
       - name: Compile Python sources
-        run: python -m compileall -q agent.py spotify_mcp.py psych_mcp.py streamlit_app.py run_tool.py get_token.py benchmarks tests
+        run: python -m compileall -q agent.py spotify_mcp.py psych_mcp.py streamlit_app.py run_tool.py get_token.py spotify_oauth.py store.py benchmarks tests
 
       - name: Run psych checks
         run: |
           python psych_mcp.py --selfcheck
           python -m unittest -v tests.test_psych
+
+      - name: Run store and OAuth checks
+        run: |
+          python -m unittest -v tests.test_store
+          python -m unittest -v tests.test_auth
+          python spotify_oauth.py --selfcheck
+          python get_token.py --selfcheck
+
+      - name: Run Spotify server self-check
+        run: python spotify_mcp.py --selfcheck
 
       - name: Run benchmark self-checks
         run: |
