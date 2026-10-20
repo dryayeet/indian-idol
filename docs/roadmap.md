@@ -249,6 +249,14 @@ Done section records what was actually finished.
 
 ## Done
 
+- [X] **2026-10-21 - The agent is named Svara, and gains a --loopcheck.** The UI's
+  titles, the browser tab, and the system prompt's `<who you are>` all say Svara
+  now; the Spotify MCP server keeps its technical name, and the historical docs
+  stay as written. `python agent.py --loopcheck` runs two real model turns in one
+  process, in a worker thread the way Streamlit does - the only check that can
+  catch cross-loop client leaks (the "Event loop is closed" class), which the
+  offline suites cannot reach. Costs two model calls.
+
 - [X] **2026-10-21 - One model client per turn, closed on its own loop: hosted chat
   stops dying with "Event loop is closed".** Hosted chat failed on every turn
   past the first with `RuntimeError: Event loop is closed`; until the TaskGroup

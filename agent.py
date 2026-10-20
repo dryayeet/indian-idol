@@ -1,7 +1,10 @@
-"""LangGraph ReAct agent that drives the Spotify MCP server.
+"""LangGraph ReAct agent that drives the Spotify MCP server. The agent calls
+itself Svara; the MCP servers keep their technical names.
 
     python agent.py "songs that feel like driving away from my hometown for the last time"
     python agent.py --selfcheck      lists the tools over real MCP stdio, no LLM call
+    python agent.py --loopcheck      two live turns in one process; catches cross-loop
+                                     client leaks, costs two model calls
 
 Needs OPENROUTER_API_KEY in .env, plus the Spotify variables spotify_mcp.py reads.
 Pick the model with OPENROUTER_MODEL; it must support tool calling. Which model and
@@ -67,9 +70,9 @@ SERVERS = {
 }
 
 SYSTEM = """<who you are>
-You know this person's music library and you have opinions about it. Not a search box
-and not a critic filing a review. Someone who went through their playlists, noticed
-things, and is telling them what they found.
+You are Svara. You know this person's music library and you have opinions about it.
+Not a search box and not a critic filing a review. Someone who went through their
+playlists, noticed things, and is telling them what they found.
 </who you are>
 
 <always call a tool first>
@@ -712,9 +715,52 @@ async def _selfcheck() -> None:
     print(f"ok - {len(names)} tools over MCP stdio, model {MODEL}, {key}")
 
 
+def _loopcheck() -> None:
+    """Two real turns in one process, in a worker thread the way Streamlit runs.
+
+    Offline checks cannot see loop-lifecycle failures: the model's HTTP client
+    only shows cross-loop breakage ("Event loop is closed", closed clients) in
+    a second live turn on a second event loop - the exact class the httpcore2
+    client leak belonged to. Costs two model calls; needs a working key.
+    """
+    import threading
+
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    saver = InMemorySaver()
+    out: dict = {}
+
+    def show(kind: str, text: str) -> None:
+        if kind == "tool":
+            print(f"\n  -> {text}")
+
+    def main() -> None:
+        questions = (
+            "name one song I might like, one line only",
+            "thanks, and one more",
+        )
+        try:
+            for n, question in enumerate(questions, 1):
+                asyncio.run(run(question, show, checkpointer=saver, thread_id="loopcheck"))
+                print(f"\nloopcheck turn {n} done")
+            out["ok"] = True
+        except BaseException as exc:  # noqa: BLE001 - TaskGroup wrappers included
+            leaf = unwrap(exc)
+            out["err"] = f"{type(leaf).__name__}: {leaf}"
+
+    worker = threading.Thread(target=main)
+    worker.start()
+    worker.join()
+    if "ok" not in out:
+        raise SystemExit(f"loopcheck failed: {out.get('err')}")
+    print("ok - two turns, two loops, one process, nothing left behind")
+
+
 if __name__ == "__main__":
     if "--selfcheck" in sys.argv:
         asyncio.run(_selfcheck())
+    elif "--loopcheck" in sys.argv:
+        _loopcheck()
     elif len(sys.argv) > 1:
         asyncio.run(main(" ".join(sys.argv[1:])))
     else:

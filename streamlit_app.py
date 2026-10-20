@@ -8,6 +8,9 @@ spotify_mcp.py makes it show up here with no changes to this file.
 A name screen and a Spotify connect screen gate everything: each profile
 carries its own authorization, stored encrypted by the user store, and no
 Spotify call runs until the account is linked.
+
+The agent presents itself to users as Svara; the Spotify MCP server it drives
+keeps its technical name.
 """
 
 import asyncio
@@ -44,7 +47,7 @@ from spotify_mcp import app
 if __name__ == "__main__" and not st.runtime.exists():
     raise SystemExit("run this with:  streamlit run streamlit_app.py")
 
-st.set_page_config(page_title="Spotify MCP", page_icon="🎧", layout="wide")
+st.set_page_config(page_title="Svara", page_icon="🎧", layout="wide")
 
 # A hosted container loses its filesystem on every reboot; pull the synced
 # database before anything reads the store. A local copy always wins, so on a
@@ -76,7 +79,7 @@ def _login_gate() -> None:
     """
     if st.session_state.get("user_id"):
         return
-    st.title("🎧 Spotify MCP")
+    st.title("🎧 Svara")
     st.caption("An agent over the tools, or the tools by hand.")
     submitted = st.session_state.get("login_name_submitted")
     candidates = st.session_state.get("login_candidates")
@@ -191,7 +194,7 @@ def _connect_gate() -> None:
         st.session_state.auth_ok = True
         return
 
-    st.title("🎧 Spotify MCP")
+    st.title("🎧 Svara")
     st.subheader("Connect Spotify")
     st.caption(
         "Every call runs on your own authorization, so nothing works until the account is linked."
@@ -684,7 +687,7 @@ def _agent_panel() -> None:
 tools, _home = _tools()
 names = [t.name for t in tools]
 
-st.title("🎧 Spotify MCP")
+st.title("🎧 Svara")
 st.caption("An agent over the tools, or the tools by hand.")
 
 with st.sidebar:

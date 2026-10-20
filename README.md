@@ -1,9 +1,9 @@
-# Spotify Agent
+# Svara
 
 An affect-aware music assistant built with LangGraph, FastMCP, Streamlit, and the
-Spotify Web API. It combines 22 music and account tools with two Hugging Face
-psychology tools, then exposes them through an agent chat, direct tool forms, and a
-command-line client.
+Spotify Web API. Svara is the agent: she combines 22 music and account tools with
+two Hugging Face psychology tools, then exposes them through an agent chat, direct
+tool forms, and a command-line client.
 
 The UI gates every session behind a name login and a Spotify connect: each profile
 carries its own encrypted Spotify authorization, and every call runs on the signed-in
@@ -318,6 +318,7 @@ python -m unittest -v tests.test_auth
 python -m unittest -v tests.test_dbsync
 python run_tool.py --selfcheck
 python agent.py --selfcheck
+python agent.py --loopcheck
 python benchmarks/bakeoff.py --selfcheck
 python benchmarks/bakeoff_jev.py --selfcheck
 python benchmarks/bakeoff_jev_40.py --selfcheck
@@ -327,7 +328,9 @@ python tests/test_ui.py
 Most self-checks avoid model calls. `agent.py --selfcheck` starts both MCP servers,
 reads Spotify playlist names, and asserts at least one is visible. It requires valid
 Spotify credentials and network access. The UI check uses Streamlit's headless test
-harness and makes no model calls.
+harness and makes no model calls. `agent.py --loopcheck` runs two real model turns
+in one process, the way a chat session does, so it is the only check that can catch
+cross-loop client leaks (the "Event loop is closed" class); it costs two model calls.
 
 ## Current Limitations
 

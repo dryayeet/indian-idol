@@ -1,8 +1,9 @@
 # Architecture
 
-This page describes the current implementation. The original proposal is preserved
-separately because durable psychological profiles and a closed feedback loop are not
-implemented yet.
+This page describes the current implementation. The agent is called Svara; that is
+the name users see in the UI and the one the model calls itself. The original
+proposal is preserved separately because durable psychological profiles and a
+closed feedback loop are not implemented yet.
 
 ## System
 
