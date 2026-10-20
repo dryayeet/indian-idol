@@ -82,6 +82,8 @@ flow; use the exact `127.0.0.1` redirect above.
 | `SPOTIFY_CLIENT_SECRET` | Yes | Spotify OAuth and token refresh. |
 | `SPOTIFY_REFRESH_TOKEN` | CLIs | The `.env` account for `agent.py` and `run_tool.py`; the UI uses per-profile tokens instead. |
 | `USERS_DB_KEY` | Auto locally; required for a durable hosted deployment | Fernet key encrypting per-profile refresh tokens in `data/users.db`; generated into `.env` on first local connect. |
+| `DB_SYNC_GIST_ID` | Hosted deploys | The private gist `db_sync.py` pushes `data/users.db` to, so profiles survive container reboots. |
+| `DB_SYNC_TOKEN` | With the above | GitHub token scoped to gists, used for the sync. |
 | `OPENROUTER_API_KEY` | Agent mode | Conversational model and live benchmarks. |
 | `OPENROUTER_MODEL` | No | Tool-capable OpenRouter model override. |
 | `HF_TOKEN` | Psych tools | Big Five and emotion inference; needs Inference Providers permission. |
@@ -153,8 +155,7 @@ attempt. Missing scopes or tokens abort the connect without creating a profile.
 - Name confirmation is a convenience, **not proof of identity**. Anyone with
   access to the UI can select a profile and use its stored Spotify connection.
 - For hosted Streamlit, configure client credentials and a stable `USERS_DB_KEY`
-  as secrets. Persist `data/users.db` separately: ephemeral hosting storage
-  loses profiles on restart.
+  as secrets, plus the gist sync below so profiles survive container reboots.
 - Logout, local revoke, and the 6-month re-auth banner are still on the roadmap.
 
 ## Approval Modes
@@ -249,6 +250,7 @@ content the API cannot access, such as Blends or another user's playlist.
 |-- psych_mcp.py             # 2 Hugging Face tools
 |-- streamlit_app.py         # login, chat, and direct tool UI
 |-- store.py                 # profiles and encrypted Spotify bindings
+|-- db_sync.py               # gist sync for data/users.db on hosted deploys
 |-- run_tool.py              # direct Spotify tool CLI
 |-- get_token.py             # Spotify OAuth helper for the .env account
 |-- benchmarks/              # live evaluation harnesses
@@ -313,6 +315,7 @@ python get_token.py --selfcheck
 python -m unittest -v tests.test_psych
 python -m unittest -v tests.test_store
 python -m unittest -v tests.test_auth
+python -m unittest -v tests.test_dbsync
 python run_tool.py --selfcheck
 python agent.py --selfcheck
 python benchmarks/bakeoff.py --selfcheck
@@ -350,4 +353,16 @@ profile and spend the configured model-provider credits; approval modes help, bu
 
 For Streamlit Community Cloud, configure all required Spotify and OpenRouter secrets,
 plus `HF_TOKEN` if psych tools are enabled, and restrict the application to trusted
-viewers. See [SECURITY.md](SECURITY.md) for reporting and handling guidance.
+viewers. Container storage is ephemeral there, so profile data would vanish on
+every reboot; the gist sync keeps it instead:
+
+1. Create a GitHub token scoped to gists and put it in `.env` as
+   `DB_SYNC_TOKEN`.
+2. Run `python db_sync.py --seed` once: it creates the private gist from the
+   local `data/users.db` and prints `DB_SYNC_GIST_ID`.
+3. Add both to the app's secrets, with the same `USERS_DB_KEY` as the machine
+   that seeded the gist so the migrated profiles still decrypt.
+
+`python db_sync.py --check` verifies the gist reads back. The sync is inert
+when either variable is unset, so local development is unchanged.
+See [SECURITY.md](SECURITY.md) for reporting and handling guidance.

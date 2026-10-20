@@ -25,9 +25,12 @@ import store  # noqa: E402
 import spotify_mcp  # noqa: E402
 import agent  # noqa: E402
 
+import db_sync  # noqa: E402 - its .env load must happen before the pops below
+
 STATE = "STATE"
 _HELD_DB = store.DB
 _HELD_KEY = os.environ.get(store.KEY_VAR)
+_HELD_SYNC = tuple(os.environ.get(v) for v in (db_sync.GIST_ID_VAR, db_sync.TOKEN_VAR))
 _TEMP_DB: tempfile.TemporaryDirectory | None = None
 
 # the real functions, restored on the way out so a later import sees the truth
@@ -43,6 +46,9 @@ def _fake_oauth() -> None:
     _TEMP_DB = tempfile.TemporaryDirectory()
     store.DB = os.path.join(_TEMP_DB.name, "users.db")
     os.environ[store.KEY_VAR] = Fernet.generate_key().decode()
+    # no profile pushes from a test run, even on a machine with sync configured
+    os.environ.pop(db_sync.GIST_ID_VAR, None)
+    os.environ.pop(db_sync.TOKEN_VAR, None)
     spotify_oauth.new_state = lambda: STATE
     spotify_oauth.start_listener = lambda: False
     spotify_oauth.poll_listener = lambda state: None
@@ -63,6 +69,11 @@ def _restore_oauth() -> None:
         os.environ.pop(store.KEY_VAR, None)
     else:
         os.environ[store.KEY_VAR] = _HELD_KEY
+    for var, held in zip((db_sync.GIST_ID_VAR, db_sync.TOKEN_VAR), _HELD_SYNC):
+        if held is None:
+            os.environ.pop(var, None)
+        else:
+            os.environ[var] = held
     if _TEMP_DB is not None:
         _TEMP_DB.cleanup()
 

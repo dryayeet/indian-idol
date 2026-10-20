@@ -4,6 +4,7 @@ import unittest
 
 from cryptography.fernet import Fernet
 
+import db_sync
 import store
 
 
@@ -16,6 +17,10 @@ class StoreTests(unittest.TestCase):
         # test must not write there
         self._held_key = os.environ.get(store.KEY_VAR)
         os.environ[store.KEY_VAR] = Fernet.generate_key().decode()
+        # no profile pushes from a test run, even on a machine with sync configured
+        self._held_sync = tuple(os.environ.get(v) for v in (db_sync.GIST_ID_VAR, db_sync.TOKEN_VAR))
+        os.environ.pop(db_sync.GIST_ID_VAR, None)
+        os.environ.pop(db_sync.TOKEN_VAR, None)
 
     def tearDown(self):
         store.DB = self._held
@@ -23,6 +28,11 @@ class StoreTests(unittest.TestCase):
             os.environ.pop(store.KEY_VAR, None)
         else:
             os.environ[store.KEY_VAR] = self._held_key
+        for var, held in zip((db_sync.GIST_ID_VAR, db_sync.TOKEN_VAR), self._held_sync):
+            if held is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = held
         self.tmp.cleanup()
 
     def test_create_and_find_case_insensitive(self):

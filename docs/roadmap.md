@@ -249,6 +249,22 @@ Done section records what was actually finished.
 
 ## Done
 
+- [X] **2026-10-20 - Hosted deployment readiness: profile sync and hosted-aware OAuth UX.**
+  Streamlit Community Cloud containers wipe their filesystem on every reboot,
+  which killed all profiles. `db_sync.py` now checkpoints the SQLite
+  write-ahead log and pushes `data/users.db` (tokens already Fernet-encrypted)
+  to a private GitHub gist after each binding write, throttles the
+  last-seen-only touches to one a minute, and restores the database on a cold
+  start; failures surface as a sidebar line and degrade to the old ephemeral
+  behaviour instead of breaking the app. Inert without `DB_SYNC_GIST_ID` and
+  `DB_SYNC_TOKEN`, so local runs and the CLIs are untouched. The connect screen
+  now knows when the app is hosted (`st.context.headers`) and stops claiming
+  the localhost listener will catch a redirect that lands on the viewer's own
+  machine; the dead `get_token.py` advice in Tools mode is local-only now.
+  One-time seeding and a read-back check live in `db_sync.py --seed/--check`;
+  `tests.test_dbsync` mocks the network, and the store/UI tests now pin the
+  sync off so a configured dev machine cannot push from its test runs.
+
 - [X] **2026-10-09 - Add agent playback controls: resume, pause, next, previous.**
   Four Spotify MCP tools over the active device, gated in AFK mode like the
   playlist writes. The new `user-modify-playback-state` scope is requested on

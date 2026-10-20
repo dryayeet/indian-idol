@@ -14,6 +14,7 @@ import uuid
 from contextlib import closing
 from datetime import datetime, timezone
 
+import db_sync
 from cryptography.fernet import Fernet, InvalidToken
 from dotenv import load_dotenv
 
@@ -114,6 +115,7 @@ def create_user(name: str) -> dict:
             "VALUES (?, ?, ?, ?, ?)",
             (user["id"], user["display_name"], None, user["created_at"], user["last_seen_at"]),
         )
+    db_sync.push()
     return user
 
 
@@ -127,6 +129,7 @@ def touch(user_id: str) -> None:
     """Mark a profile as just seen, so the confirmation card can say when."""
     with closing(_connect()) as con:
         con.execute("UPDATE users SET last_seen_at = ? WHERE id = ?", (_now(), user_id))
+    db_sync.push(urgent=False)  # cosmetic: it can ride along with a later write
 
 
 def link_spotify(user_id: str, spotify_user_id: str) -> None:
@@ -137,6 +140,7 @@ def link_spotify(user_id: str, spotify_user_id: str) -> None:
             "UPDATE users SET spotify_user_id = ? WHERE id = ?",
             (spotify_user_id, user_id),
         )
+    db_sync.push()
 
 
 def save_spotify_auth(
@@ -156,6 +160,7 @@ def save_spotify_auth(
             "spotify_name = ?, auth_at = ? WHERE id = ?",
             (enc, scopes, spotify_user_id, spotify_name, _now(), user_id),
         )
+    db_sync.push()
 
 
 def create_spotify_user(
@@ -192,6 +197,7 @@ def create_spotify_user(
         except Exception:
             con.execute("ROLLBACK")
             raise
+    db_sync.push()
     return get_user(user_id), True
 
 

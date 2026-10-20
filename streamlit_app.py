@@ -28,11 +28,13 @@ except StreamlitSecretNotFoundError:
 for _name in (
     "SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET", "USERS_DB_KEY",
     "OPENROUTER_API_KEY", "OPENROUTER_MODEL", "HF_TOKEN", "LASTFM_API_KEY",
+    "DB_SYNC_GIST_ID", "DB_SYNC_TOKEN",
 ):
     if _secrets.get(_name) and not os.environ.get(_name):
         os.environ[_name] = str(_secrets[_name])
 
 import agent
+import db_sync
 import spotify_oauth
 import store
 from psych_mcp import app as psych_app
@@ -43,6 +45,25 @@ if __name__ == "__main__" and not st.runtime.exists():
     raise SystemExit("run this with:  streamlit run streamlit_app.py")
 
 st.set_page_config(page_title="Spotify MCP", page_icon="🎧", layout="wide")
+
+# A hosted container loses its filesystem on every reboot; pull the synced
+# database before anything reads the store. A local copy always wins, so on a
+# dev machine this is a no-op.
+db_sync.restore()
+if db_sync.enabled() and (_sync_error := db_sync.status()):
+    st.sidebar.warning(f"profile sync: {_sync_error}")
+
+
+def _hosted() -> bool:
+    """True when the app is served from somewhere other than the viewer's own
+    machine. The OAuth redirect always goes to 127.0.0.1:8888 on the *viewer's*
+    machine, so on a hosted app it can never land in this process and the
+    paste-back path is the real one."""
+    try:
+        host = (st.context.headers.get("Host") or "").split(":")[0].lower()
+    except Exception:  # noqa: BLE001 - the test harness and bare runs carry no headers
+        return False
+    return bool(host) and host not in ("localhost", "127.0.0.1")
 
 
 def _login_gate() -> None:
@@ -214,14 +235,21 @@ def _connect_gate() -> None:
     state = st.session_state.get("oauth_state") or spotify_oauth.new_state()
     st.session_state.oauth_state = state
     spotify_oauth.register_state(state)
-    listening = spotify_oauth.start_listener()
+    hosted = _hosted()
+    listening = None if hosted else spotify_oauth.start_listener()
     st.markdown(
         f"1. open [the Spotify authorize page]({spotify_oauth.authorize_url(state)}) and approve"
     )
     st.caption(
-        "listening on `http://127.0.0.1:8888/callback`, so the approval lands here"
-        if listening
-        else "not listening locally (port busy, or a cloud deploy): paste the URL instead"
+        "hosted app: the approval page redirects to your own machine, so it cannot "
+        "land here. Copy the full URL from the browser's address bar (it holds the "
+        "code and state) and paste it below"
+        if hosted
+        else (
+            "listening on `http://127.0.0.1:8888/callback`, so the approval lands here"
+            if listening
+            else "not listening locally (port busy): paste the URL instead"
+        )
     )
     pasted = st.text_input("or paste the URL Spotify sent you to", key="oauth_paste")
     submitted_paste = st.button("Use pasted redirect", key="oauth_submit")
@@ -721,7 +749,12 @@ if st.button("Run", type="primary"):
                     _require_reconnect()
                     st.rerun()
                 if "missing env var" in str(exc):
-                    st.info("Run `python get_token.py` first to write .env")
+                    if _hosted():
+                        # the CLIs do not exist on a hosted container; only the
+                        # per-profile authorization path does
+                        st.info("This profile has no Spotify authorization; reconnect it from the sidebar.")
+                    else:
+                        st.info("Run `python get_token.py` first to write .env")
             else:
                 # FastMCP 1.x returns (content_blocks, structured_result)
                 blocks = result[0] if isinstance(result, tuple) else result
