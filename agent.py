@@ -30,6 +30,27 @@ load_dotenv(os.path.join(HERE, ".env"))
 
 KEY_VAR = "OPENROUTER_API_KEY"
 MODEL = os.environ.get("OPENROUTER_MODEL") or "qwen/qwen3.5-flash-02-23"
+
+try:
+    _Group = BaseExceptionGroup
+except NameError:  # Python 3.10 has no built-in groups; isinstance((), ...) is False
+    _Group = ()
+
+
+def unwrap(exc: BaseException) -> BaseException:
+    """The real failure an ExceptionGroup wrapper is hiding, or exc itself.
+
+    The MCP stdio session ends in an anyio TaskGroup, and its teardown wraps
+    anything the turn raised: "unhandled errors in a TaskGroup (1
+    sub-exception)" tells the user nothing about what actually failed. One
+    leaf is the common case; with several, the longest message wins, because
+    a bare "unhandled errors" member would lose the detail.
+    """
+    for _ in range(10):  # groups nest shallowly; the cap stops a crafted cycle
+        if not isinstance(exc, _Group) or not exc.exceptions:
+            return exc
+        exc = max(exc.exceptions, key=lambda e: len(str(e)))
+    return exc
 SERVERS = {
     "spotify": {
         "command": sys.executable,

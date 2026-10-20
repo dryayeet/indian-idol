@@ -121,6 +121,7 @@ def main() -> None:
         _incomplete_redirect()
         _tools_use_signed_in_account()
         _agent_failure_requires_reconnect()
+        _chat_error_names_the_real_cause()
         _lost_encryption_key_flow()
     finally:
         _restore_oauth()
@@ -359,6 +360,30 @@ def _tools_use_signed_in_account() -> None:
             next(b for b in app.button if b.label == "Run").click().run()
         _assert_clean(app, f"Tools mode for {name}")
     assert seen == ["refresh-alice", "refresh-bob"], seen
+
+
+def _chat_error_names_the_real_cause() -> None:
+    """The TaskGroup wrapper the MCP session leaves must not hide the failure."""
+    user = store.find_users("alice")[0]
+    app = _new_app()
+    app.run()
+    _enter_name(app, "alice")
+    app.button(key=f"login_yes_{user['id']}").click().run()
+
+    async def failing_turn(question, on_part, **kwargs):
+        raise ExceptionGroup(
+            "unhandled errors in a TaskGroup (1 sub-exception)",
+            [RuntimeError("Error code: 401 - Missing Authentication header")],
+        )
+
+    with patch.object(agent, "turn", side_effect=failing_turn), patch.dict(
+        os.environ, {agent.KEY_VAR: "test-openrouter-key"}
+    ):
+        app.chat_input[0].set_value("my listening").run()
+    _assert_clean(app, "agent error display")
+    assert app.error, "the failure should reach the user"
+    assert "401" in app.error[0].value, app.error[0].value
+    assert "TaskGroup" not in app.error[0].value, "the wrapper must not be the message"
 
 
 def _agent_failure_requires_reconnect() -> None:

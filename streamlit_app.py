@@ -502,8 +502,9 @@ def _continue(approve: bool, key: str) -> None:
                     )
                 )
             except Exception as exc:  # noqa: BLE001 - surface model and API failures
+                exc = agent.unwrap(exc)  # a TaskGroup wrapper hides the real cause
                 if type(exc).__module__.startswith("streamlit"):
-                    raise  # a rerun or Stop, not a failure
+                    raise exc  # a rerun or Stop, not a failure
                 st.error(f"{type(exc).__name__}: {exc}")
                 return
     if st.session_state.get("auth_failed"):
@@ -663,13 +664,14 @@ def _agent_panel() -> None:
                     )
                 )
             except Exception as exc:  # noqa: BLE001 - surface model and API failures
+                exc = agent.unwrap(exc)  # a TaskGroup wrapper hides the real cause
                 if type(exc).__module__.startswith("streamlit"):
-                    # the Stop button (or any interaction) killed the run mid-turn.
+                    # The Stop button (or any interaction) killed the run mid-turn.
                     # Keep what had streamed, then let Streamlit take the rerun.
                     flush()
                     parts.append(("text", "_stopped_"))
                     st.session_state.chat.append(("assistant", parts))
-                    raise
+                    raise exc
                 st.error(f"{type(exc).__name__}: {exc}")
                 return
         flush()

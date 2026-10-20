@@ -209,6 +209,22 @@ class BigFiveTests(unittest.TestCase):
         self.assertIn("unavailable", agent.SYSTEM)
         self.assertIn("your own casual reading", agent.SYSTEM)
 
+    def test_unwrap_reveals_the_real_failure(self):
+        """The MCP session's TaskGroup teardown must not hide the cause."""
+        real = RuntimeError("Error code: 401 - Missing Authentication header")
+        group = ExceptionGroup("unhandled errors in a TaskGroup (1 sub-exception)", [real])
+        self.assertIs(agent.unwrap(group), real)
+        self.assertIs(agent.unwrap(real), real)
+        # several members: the one with the detail wins, not the bare wrapper
+        bare = RuntimeError("unhandled errors")
+        nested = ExceptionGroup("two died", [bare, real])
+        self.assertIs(agent.unwrap(nested), real)
+        # a wrapped streamlit control exception stays recognizable as streamlit's
+        rerun = type("RerunException", (Exception,), {"__module__": "streamlit"})("rerun")
+        self.assertIs(
+            agent.unwrap(ExceptionGroup("taskgroup", [rerun])), rerun
+        )
+
     @patch.object(psych_mcp, "_sampled_chunks", return_value=(["sample text"], 11, False))
     @patch.object(psych_mcp, "_pooled")
     def test_get_big_five_degrades_gracefully_on_refusal(self, pooled, _sampled):
