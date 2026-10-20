@@ -1,6 +1,6 @@
 # Roadmap
 
-Living list. Updated 2026-10-09. Current decisions go in
+Living list. Updated 2026-10-21. Current decisions go in
 [architecture.md](architecture.md); this file records what is still owed.
 
 Ordered by what blocks the most. Check items off, do not delete them, so the
@@ -72,6 +72,30 @@ Done section records what was actually finished.
   once already. If it comes back a third time, stop re-wording and build the
   structural check: flag any first-turn reply with zero tool calls in the UI, or
   refuse to render links that no tool returned this turn.
+- [ ] **Hand-write the prompt and the tool descriptions.** Both grew patch by
+  patch, every wording added to fix the failure in front of it, and neither has
+  had a deliberate pass as one document. They are the model's entire
+  understanding of Svara and her tools: `SYSTEM` in `agent.py` and the tool
+  docstrings in `spotify_mcp.py` and `psych_mcp.py`. Write them by hand as one
+  coherent whole, saying what each tool is for and when not to reach for it,
+  then re-run the bake-off to check nothing regressed.
+- [ ] **The model passes invented metadata as tool arguments.** It names a wrong
+  artist for a song it is holding, so `get_lyrics` 404s and the lyrics come back
+  empty: a factually wrong parameter, not a missing one. The real artist is
+  usually in the tool result the model just read, which makes this a cousin of
+  the zero-tool fabrication above, with the same escalation path: instruct first
+  ("copy names from what a tool returned, never from memory"), and if instruction
+  fails again, make the code catch it, a metadata mismatch against the source
+  result rather than a silent empty return.
+- [ ] **Tool chains do not follow the design.** `web_search` is called for
+  unrecognisable purposes instead of its one job, external information the
+  Spotify tools cannot answer (the weight-per-tool item below recorded it as
+  under-used; live use shows it is also mis-aimed when called). The intended
+  chains, search then measure, and `listening_lyrics` then the psych tools, are
+  described in the prompt but not reliably followed. Needs a pass over real chat
+  transcripts to name the wrong chains concretely, then prompt fixes (or
+  structural ones, if wording again proves too weak), and bake-off cases that
+  score the chain rather than only the final reply.
 - [ ] **Re-attach an upload on demand.** The first turn sees an image's pixels, later
   turns see its stored reading, and the raw bytes are then gone. Keeping them in
   session state would let a later question ("what was in the corner of that
