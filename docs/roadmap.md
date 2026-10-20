@@ -96,6 +96,20 @@ Done section records what was actually finished.
   transcripts to name the wrong chains concretely, then prompt fixes (or
   structural ones, if wording again proves too weak), and bake-off cases that
   score the chain rather than only the final reply.
+- [ ] **Svara does not know who she is talking to.** The signed-in name sits in
+  the UI's session state and never reaches the turn, so the model answers a
+  stranger. The playlist names reached the prompt through `_prompt()` and fixed
+  a behaviour problem outright; the user's name is the same move, one line of
+  context instead of a rule. Add it, and watch for the opposite failure: using
+  the name where the person did not.
+- [ ] **It leans too hard on the playlist names in the prompt.** The names were
+  injected to stop the model searching for a playlist as a song title, and that
+  worked: ten wasted calls became two. Live use shows the cost, though. The
+  model drags the playlists into answers where nobody asked about them and
+  routes requests through `playlist_tracks` when the user meant something
+  broader. Context fixed the original problem and now oversells the feature;
+  the next wording has to say what the names are for, recognising mentions,
+  rather than steering every answer toward them.
 - [ ] **Re-attach an upload on demand.** The first turn sees an image's pixels, later
   turns see its stored reading, and the raw bytes are then gone. Keeping them in
   session state would let a later question ("what was in the corner of that
