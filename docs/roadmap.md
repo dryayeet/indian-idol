@@ -110,6 +110,41 @@ Done section records what was actually finished.
   broader. Context fixed the original problem and now oversells the feature;
   the next wording has to say what the names are for, recognising mentions,
   rather than steering every answer toward them.
+- [ ] **Shift from Streamlit to a normal website, and figure out real UI and
+  deployment.** Streamlit got the app working but caps what it can be: no real
+  routing, no proper auth, the agent embedded in the page script, and deployment
+  is a community-tier container. A proper frontend needs a backend that serves
+  the agent rather than rendering it, and a deployment target that is not
+  Streamlit Cloud. The chat-ui research notes (`docs/research`) were collected
+  for exactly this move: quote replies, message branching, rendered artifacts,
+  charts. Nothing above blocks on it; the UI ambitions do.
+- [ ] **Refine the design with MJ.** A design pass on the app together with
+  MJ, a friend with a designer's eye: palette, landing, empty states, the flow
+  of a chat turn. Belongs with the website shift above, not with the
+  Streamlit UI.
+- [ ] **Move the user store to PostgreSQL on Supabase.** SQLite on ephemeral
+  disk plus the gist sync works, but it is a workaround. Hosted Postgres is
+  durable storage, keeps the same bind-collision transactions, and retires the
+  push/restore plumbing in `db_sync.py`. `store.py` funnels every read and
+  write through one module, so the swap is its handful of functions plus a
+  connection string in the secrets; Fernet encryption under `USERS_DB_KEY`
+  stays either way. Also the natural home for durable conversation memory once
+  that moves off `InMemorySaver`.
+- [ ] **A personal memory layer for each user.** The slices already owed are
+  narrow: the mental map holds what they listen to, the preference file holds
+  how they want to be worked with, the unified personality profile holds the
+  readings. Missing is the rest of the person: things they said about
+  themselves, what they asked before and how it went, carried across sessions.
+  Needs the durable store (Supabase above, or the checkpointer) before it can
+  exist, and inherits the Trace finding from the preference-file item: memory
+  that is stored but not obeyed is decoration.
+- [ ] **Explore more psych tools and the frameworks that evaluate them.** The
+  two current tools are one point in a large space: other trait and emotion
+  models, multilingual classifiers (the Hindi item below), sentiment and
+  appraisal framings, validated instruments as ground truth for the zero-shot
+  signals. Alongside, evaluation frameworks in the shape of the bake-off and
+  the Jev studies, so a new psych tool arrives with a rubric instead of vibes.
+  Related sketches: [poetry analysis](research/poetry-analysis.md).
 - [ ] **Re-attach an upload on demand.** The first turn sees an image's pixels, later
   turns see its stored reading, and the raw bytes are then gone. Keeping them in
   session state would let a later question ("what was in the corner of that
