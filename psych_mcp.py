@@ -13,6 +13,10 @@ Providers. Big Five therefore uses paired high/low OCEAN labels with the hosted
 facebook/bart-large-mnli zero-shot classifier. These are heuristic trait signals,
 not calibrated psychometric scores. Emotions use the abstract's own model.
 
+A provider refusal (wrong token, spent credits, a model that never loads) returns
+an `unavailable` note with fallback instructions instead of raising, so the
+calling model can give its own casual reading rather than a dead end.
+
 Run:  python psych_mcp.py           (stdio)
 Check: python psych_mcp.py --selfcheck
 """
@@ -94,6 +98,42 @@ def _token() -> str:
     return tok
 
 
+_REFUSAL_NOTES = {
+    401: "This is 401: the HF_TOKEN is wrong or revoked; do not retry with the same one.",
+    402: (
+        "This is 402: the account is out of Inference Providers credits; funding "
+        "it at huggingface.co/settings/billing fixes it."
+    ),
+    429: "This is 429: rate limited; wait before trying again.",
+}
+
+
+def _refusal_note(status: int) -> str:
+    """What a provider refusal means, so the caller can act instead of guessing."""
+    return _REFUSAL_NOTES.get(status, "Do not retry with the same text and token.")
+
+
+def _degraded(model: str, exc: Exception) -> dict:
+    """The payload a psych tool returns when inference cannot run at all.
+
+    A provider refusal (wrong token, spent credits, a model that never loads)
+    is not something the model can fix by rewording the text, so raising a
+    ToolError just ends the turn. This hands the caller the reason plus the
+    instruction that matters: the text it passed is still in its context, and a
+    casual reading from the model itself, clearly labeled as such, beats a dead
+    end.
+    """
+    return {
+        "unavailable": f"{model} did not run: {exc}",
+        "fallback": (
+            "Do not call this tool again for the same problem. Read the text you "
+            "passed instead and give your own casual reading of the traits or "
+            "emotions in it: your interpretation, plainly labeled as yours rather "
+            "than classifier scores, and say the psych models were unavailable and why."
+        ),
+    }
+
+
 def _chunks(text: str, chunk_chars: int = CHUNK, max_chunks: int = MAX_CHUNKS) -> list[str]:
     """Whole text as scoring-sized pieces, split on line breaks where possible."""
     text = text.strip()
@@ -173,7 +213,7 @@ def _classify(model: str, text: str, **params) -> dict[str, float]:
         if r.status_code >= 400:
             raise RuntimeError(
                 f"Hugging Face refused {model}: {r.status_code} {r.text[:200]}. "
-                "If this is 401 the HF_TOKEN is wrong; do not retry with the same one."
+                f"{_refusal_note(r.status_code)}"
             )
         data = r.json()
         if isinstance(data, dict) and {"labels", "scores"} <= set(data):
@@ -294,17 +334,22 @@ def get_big_five(text: str) -> dict:
     versus low expression of that trait. These are not calibrated psychometric scores
     or a diagnosis, and the reply should treat them that way.
     """
-    pieces, total_chars, sampled = _sampled_chunks(text)
-    scores, n = _pooled(
-        BIG_FIVE_MODEL,
-        text,
-        candidate_labels=BIG_FIVE_LABELS,
-        hypothesis_template=BIG_FIVE_HYPOTHESIS,
-        multi_label=True,
-        transform=_trait_scores,
-        pieces=pieces,
-        weights=[len(piece) for piece in pieces],
-    )
+    try:
+        pieces, total_chars, sampled = _sampled_chunks(text)
+        scores, n = _pooled(
+            BIG_FIVE_MODEL,
+            text,
+            candidate_labels=BIG_FIVE_LABELS,
+            hypothesis_template=BIG_FIVE_HYPOTHESIS,
+            multi_label=True,
+            transform=_trait_scores,
+            pieces=pieces,
+            weights=[len(piece) for piece in pieces],
+        )
+    except ValueError:
+        raise  # the caller's text is the problem, not the provider
+    except RuntimeError as exc:  # refusal, a model that never loads, an odd response
+        return _degraded(BIG_FIVE_MODEL, exc)
     traits = {trait: round(value, 3) for trait, value in scores.items()}
     return {
         "traits": traits,
@@ -327,7 +372,12 @@ def get_emotion_labels(text: str, top: int = 10) -> dict:
     nervousness, optimism, pride, realization, relief, remorse, sadness, surprise,
     and neutral.
     """
-    scores, n = _pooled(EMOTION_MODEL, text)
+    try:
+        scores, n = _pooled(EMOTION_MODEL, text)
+    except ValueError:
+        raise  # the caller's text is the problem, not the provider
+    except RuntimeError as exc:  # refusal, a model that never loads, an odd response
+        return _degraded(EMOTION_MODEL, exc)
     ranked = sorted(scores.items(), key=lambda kv: -kv[1])[: max(1, min(top, 28))]
     return {"emotions": {k: round(v, 3) for k, v in ranked}, "chunks": n, "model": EMOTION_MODEL}
 
@@ -369,6 +419,15 @@ if __name__ == "__main__":
         finally:
             if held:
                 os.environ["HF_TOKEN"] = held
+        # a provider refusal must degrade to a note the caller can act on
+        note = _degraded(
+            BIG_FIVE_MODEL,
+            RuntimeError("Hugging Face refused x: 402 out of credits. " + _refusal_note(402)),
+        )
+        assert "402" in note["unavailable"] and "credits" in note["unavailable"]
+        assert "your own casual reading" in note["fallback"]
+        assert "401" in _refusal_note(401) and "402" in _refusal_note(402)
+        assert "retry" in _refusal_note(500).lower()
         print("ok")
     else:
         app.run()

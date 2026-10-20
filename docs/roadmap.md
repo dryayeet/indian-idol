@@ -249,6 +249,18 @@ Done section records what was actually finished.
 
 ## Done
 
+- [X] **2026-10-20 - Psych tools degrade to a note the agent can answer from.**
+  A Hugging Face refusal (spent credits, a wrong token, a model that never
+  loads) used to end the turn as a ToolError; the caller could not fix it by
+  rewording text. `get_big_five` and `get_emotion_labels` now catch the
+  provider-side failures and return an `unavailable` note — the reason, named
+  by status (401: wrong token, 402: out of Inference Providers credits,
+  429: rate limited) — plus the instruction that matters: the text is still
+  in the caller's context, so the model itself should give its own casual
+  reading, labeled as its interpretation rather than classifier scores. The
+  system prompt tells it the same, so "the tool failed" is never the whole
+  answer. Bad input still raises. Verified against the real 402.
+
 - [X] **2026-10-20 - Hosted deployment readiness: profile sync and hosted-aware OAuth UX.**
   Streamlit Community Cloud containers wipe their filesystem on every reboot,
   which killed all profiles. `db_sync.py` now checkpoints the SQLite

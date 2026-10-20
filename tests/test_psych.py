@@ -204,6 +204,57 @@ class BigFiveTests(unittest.TestCase):
         self.assertIn("psych", agent.SERVERS)
         self.assertTrue(agent.SERVERS["psych"]["args"][0].endswith("psych_mcp.py"))
 
+    def test_prompt_tells_the_agent_to_fall_back(self):
+        """The system prompt must say what to do when the psych tools are down."""
+        self.assertIn("unavailable", agent.SYSTEM)
+        self.assertIn("your own casual reading", agent.SYSTEM)
+
+    @patch.object(psych_mcp, "_sampled_chunks", return_value=(["sample text"], 11, False))
+    @patch.object(psych_mcp, "_pooled")
+    def test_get_big_five_degrades_gracefully_on_refusal(self, pooled, _sampled):
+        """A spent-credits 402 returns an actionable note, not a dead end."""
+        pooled.side_effect = RuntimeError(
+            f"Hugging Face refused {psych_mcp.BIG_FIVE_MODEL}: 402 no remaining credits. "
+            + psych_mcp._refusal_note(402)
+        )
+
+        result = psych_mcp.get_big_five("sample text")
+
+        self.assertIn("402", result["unavailable"])
+        self.assertIn("credits", result["unavailable"])
+        self.assertIn("your own casual reading", result["fallback"])
+
+    @patch.object(psych_mcp, "_pooled")
+    def test_get_emotion_labels_degrades_gracefully_on_refusal(self, pooled):
+        pooled.side_effect = RuntimeError(
+            f"Hugging Face refused {psych_mcp.EMOTION_MODEL}: 401 bad token. "
+            + psych_mcp._refusal_note(401)
+        )
+
+        result = psych_mcp.get_emotion_labels("sample text")
+
+        self.assertIn("401", result["unavailable"])
+        self.assertIn("HF_TOKEN", result["unavailable"])
+        self.assertIn("your own casual reading", result["fallback"])
+
+    def test_bad_input_still_raises(self):
+        """Degradation covers provider failures, not the caller's own bad input."""
+        with self.assertRaisesRegex(ValueError, "text is required"):
+            psych_mcp.get_big_five("   ")
+        with self.assertRaisesRegex(ValueError, "text is required"):
+            psych_mcp.get_emotion_labels("   ")
+
+    @patch.object(psych_mcp, "_token", return_value="test-token")
+    @patch.object(psych_mcp._http, "post")
+    def test_classify_names_the_reason_for_refusal(self, post, _token):
+        response = Mock(status_code=402)
+        response.text = '{"error":"no remaining credits"}'
+        post.return_value = response
+
+        with self.assertRaisesRegex(RuntimeError, "402.*credits"):
+            psych_mcp._classify(psych_mcp.EMOTION_MODEL, "sample text")
+        post.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
