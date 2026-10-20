@@ -249,6 +249,31 @@ Done section records what was actually finished.
 
 ## Done
 
+- [X] **2026-10-21 - One model client per turn, closed on its own loop: hosted chat
+  stops dying with "Event loop is closed".** Hosted chat failed on every turn
+  past the first with `RuntimeError: Event loop is closed`; until the TaskGroup
+  unwrap fix it hid inside "unhandled errors in a TaskGroup", so the first
+  opaque crash and this were one bug. Reproduced by rebuilding the deploy stack
+  exactly (Python 3.14, the httpx2/httpcore2 packages a fresh install resolves)
+  in a probe shaped like Streamlit's script thread: the OpenAI SDK's default
+  async httpx client is shared process-wide, so the connection pool is created
+  on turn one's event loop and reused on every later loop, and httpcore2's
+  pools call back into their dead creation loop from teardown
+  (`_response_closed` → `call_soon`). The old httpcore 1.x backend the dev venv
+  carries tolerated the sharing, which is why local runs and CI never saw it.
+  `_llm()` now builds one explicit `httpx.AsyncClient` per model instance and
+  `build()`'s teardown closes it while its loop is alive; the shared default is
+  never touched. Two clean probe turns on the fresh stack, dev suite
+  unchanged.
+
+- [X] **2026-10-20 - Unwrap the TaskGroup the MCP session leaves before showing a
+  chat error.** Every error raised inside a chat turn exits the MCP stdio
+  session through an anyio TaskGroup, so the UI reported the wrapper ("1
+  sub-exception") and threw away the cause. `agent.unwrap()` walks the group to
+  its most detailed leaf, and both chat error paths unwrap before deciding
+  rerun vs real failure, so a wrapped control exception still reruns and a real
+  failure shows its type and message.
+
 - [X] **2026-10-20 - Psych tools degrade to a note the agent can answer from.**
   A Hugging Face refusal (spent credits, a wrong token, a model that never
   loads) used to end the turn as a ToolError; the caller could not fix it by

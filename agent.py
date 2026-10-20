@@ -15,7 +15,9 @@ file.
 import asyncio
 import os
 import sys
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+
+import httpx
 
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, ToolMessage
@@ -177,6 +179,14 @@ def _llm(model: str | None = None):
         api_key=key,
         base_url="https://openrouter.ai/api/v1",
         max_tokens=4000,
+        # One async client per model instance, closed in build()'s teardown.
+        # The SDK's default client is shared process-wide and outlives the
+        # turn's event loop: on the loop-binding httpcore2 backend a fresh
+        # install resolves, its stale connection pools poison later turns
+        # with "Event loop is closed", and closing the shared default in
+        # teardown breaks every later turn instead. An explicit client owns
+        # its lifecycle: created, used, and closed on this turn's loop.
+        http_async_client=httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=5.0)),
         # Without this, qwen3.5-flash streams its deliberation as the visible reply
         # ("The user wants...", stray </think> tags). `exclude` does not help: the
         # model emits reasoning as ordinary content, so it has to be turned off.
@@ -417,15 +427,26 @@ async def build(
     client = MultiServerMCPClient(servers)
     async with client.session("spotify") as session, client.session("psych") as psych:
         tools = await load_mcp_tools(session) + await load_mcp_tools(psych)
-        yield create_react_agent(
-            _llm(model),
-            tools,
-            prompt=await _prompt(session),
-            checkpointer=checkpointer,
-            pre_model_hook=_shrink_old_tools,
-            # pause before the tool node so a mode can hold calls for approval
-            interrupt_before=["tools"] if gated else None,
-        )
+        llm = _llm(model)
+        try:
+            yield create_react_agent(
+                llm,
+                tools,
+                prompt=await _prompt(session),
+                checkpointer=checkpointer,
+                pre_model_hook=_shrink_old_tools,
+                # pause before the tool node so a mode can hold calls for approval
+                interrupt_before=["tools"] if gated else None,
+            )
+        finally:
+            # The model's connection pool binds its anyio streams to this turn's
+            # event loop. Left open, it outlives asyncio.run, and its garbage
+            # collection during a later turn calls the dead loop: "RuntimeError:
+            # Event loop is closed" (seen with httpcore2 >= 2.15, which a fresh
+            # install resolves; the old httpcore 1.x backend did not cache the
+            # loop this way). Close it while the loop that made it is alive.
+            with suppress(Exception):
+                await llm.root_async_client.close()
 
 
 _THINK_TAGS = ("<think>", "</think>", "<thinking>", "</thinking>")
